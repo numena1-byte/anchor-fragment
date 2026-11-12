@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'AF_TEST' ) ) {
 class AF_Parser {
 
 	/** Bump when parsing rules change, so cached results are rebuilt. */
-	const VERSION = 2;
+	const VERSION = 3; // 3: documents also build the hashed word-run index used for matching.
 
 	/** Largest forward jump in numbering still accepted (it is reported as a gap). */
 	const MAX_SKIP = 5;

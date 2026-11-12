@@ -167,6 +167,11 @@ class AF_Service {
 			),
 			'paras' => $paras,
 		);
+		// Hashed word-run index for matching quotations. It cannot be turned back into the text.
+		$idx = AF_Matcher::build_index( $parsed['paragraphs'] );
+		update_option( 'af_idx_' . $id, $idx, false );
+		$doc['meta']['shingles'] = count( $idx );
+
 		update_option( $key, $doc, false ); // autoload off: this is never loaded on normal page views.
 		return $doc;
 	}
@@ -198,5 +203,55 @@ class AF_Service {
 			'source'   => $doc['meta']['source'],
 			'fetch_ms' => $doc['meta']['fetch_ms'],
 		);
+	}
+
+	/**
+	 * Find the source paragraph of each quotation in a post, and save the result in the
+	 * option af_match_<post id> so it can be read back later.
+	 *
+	 * @return array|WP_Error
+	 */
+	public static function analyze_post( $post_id ) {
+		$post = get_post( $post_id );
+		if ( ! $post || ! current_user_can( 'read_post', $post->ID ) ) {
+			return new WP_Error( 'af_no_post', 'No such post: ' . (int) $post_id, array( 'status' => 404 ) );
+		}
+
+		// Every document needs a current index. This fetches any that are missing (2 seconds apart).
+		foreach ( array_keys( self::registry() ) as $id ) {
+			$doc = self::get_doc( $id, false );
+			if ( ! is_wp_error( $doc ) && ! is_array( get_option( 'af_idx_' . $id ) ) ) {
+				$doc = self::get_doc( $id, true );
+			}
+			if ( is_wp_error( $doc ) ) {
+				return $doc;
+			}
+		}
+
+		$tags  = array();
+		$terms = get_the_terms( $post->ID, 'post_tag' );
+		if ( is_array( $terms ) ) {
+			$tags = wp_list_pluck( $terms, 'name' );
+		}
+
+		$analyzer = new AF_Analyzer( self::registry() );
+		$res      = $analyzer->analyze(
+			wpautop( $post->post_content ),
+			$tags,
+			function ( $doc_id ) {
+				$i = get_option( 'af_idx_' . $doc_id );
+				return is_array( $i ) ? $i : null;
+			}
+		);
+
+		$res = array(
+			'post_id'        => $post->ID,
+			'title'          => get_the_title( $post ),
+			'url'            => get_permalink( $post ),
+			'ran_at'         => time(),
+			'plugin_version' => AF_VERSION,
+		) + $res;
+		update_option( 'af_match_' . $post->ID, $res, false );
+		return $res;
 	}
 }

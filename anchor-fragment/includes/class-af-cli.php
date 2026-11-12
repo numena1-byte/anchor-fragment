@@ -117,6 +117,39 @@ class AF_CLI {
 	}
 
 	/**
+	 * Find which paragraph each quotation in a post came from.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <post_id>
+	 * : The post to examine.
+	 *
+	 * @param array $args Positional arguments.
+	 */
+	public function match( $args ) {
+		$res = AF_Service::analyze_post( (int) $args[0] );
+		if ( is_wp_error( $res ) ) {
+			WP_CLI::error( $res->get_error_message() );
+		}
+		WP_CLI::log( '#' . $res['post_id'] . ' ' . $res['title'] );
+		$rows = array();
+		foreach ( $res['quotes'] as $q ) {
+			$rows[] = array(
+				'i'       => $q['i'],
+				'status'  => $q['status'],
+				'matched' => $q['best'] ? $q['best']['doc'] . ' ' . implode( ',', $q['best']['locators'] ) : '-',
+				'cover'   => $q['best'] ? $q['best']['coverage'] : '',
+				'quote'   => $q['excerpt'],
+			);
+		}
+		if ( $rows ) {
+			\WP_CLI\Utils\format_items( 'table', $rows, array( 'i', 'status', 'matched', 'cover', 'quote' ) );
+		} else {
+			WP_CLI::log( 'No quotations found.' );
+		}
+	}
+
+	/**
 	 * Delete cached documents.
 	 *
 	 * ## OPTIONS
