@@ -1,0 +1,60 @@
+{
+	"version": 1,
+	"note": "URLs and expected_count values are unverified until 'wp anchor check' has run against them. expected_count is the number of numbered paragraphs the document should have; it is used only as a test oracle.",
+	"documents": [
+		{
+			"id": "laudato-si",
+			"title": "Laudato si'",
+			"short": "LS",
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 246,
+			"url": "https://www.vatican.va/content/francesco/en/encyclicals/documents/papa-francesco_20150524_enciclica-laudato-si.html"
+		},
+		{
+			"id": "fratelli-tutti",
+			"title": "Fratelli tutti",
+			"short": "FT",
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 287,
+			"url": "https://www.vatican.va/content/francesco/en/encyclicals/documents/papa-francesco_20201003_enciclica-fratelli-tutti.html"
+		},
+		{
+			"id": "evangelii-gaudium",
+			"title": "Evangelii gaudium",
+			"short": "EG",
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 288,
+			"url": "https://www.vatican.va/content/francesco/en/apost_exhortations/documents/papa-francesco_esortazione-ap_20131124_evangelii-gaudium.html"
+		},
+		{
+			"id": "sacrosanctum-concilium",
+			"title": "Sacrosanctum Concilium",
+			"short": "SC",
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 130,
+			"url": "https://www.vatican.va/archive/hist_councils/ii_vatican_council/documents/vat-ii_const_19631204_sacrosanctum-concilium_en.html"
+		},
+		{
+			"id": "lumen-gentium",
+			"title": "Lumen gentium",
+			"short": "LG",
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 69,
+			"url": "https://www.vatican.va/archive/hist_councils/ii_vatican_council/documents/vat-ii_const_19641121_lumen-gentium_en.html"
+		},
+		{
+			"id": "gaudium-et-spes",
+			"title": "Gaudium et spes",
+			"short": "GS",
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 93,
+			"url": "https://www.vatican.va/archive/hist_councils/ii_vatican_council/documents/vat-ii_const_19651207_gaudium-et-spes_en.html"
+		}
+	]
+}
