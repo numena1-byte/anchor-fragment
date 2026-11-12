@@ -54,6 +54,7 @@ class AF_Analyzer {
 			$this->docs[ $id ] = array(
 				'title'   => $d['title'],
 				'short'   => isset( $d['short'] ) ? $d['short'] : '',
+				'max'     => isset( $d['expected_count'] ) ? (int) $d['expected_count'] : 999,
 				'aliases' => array_values( array_unique( $aliases ) ),
 				'slug'    => pathinfo( $path, PATHINFO_FILENAME ),
 			);
@@ -75,6 +76,24 @@ class AF_Analyzer {
 			}
 		}
 		$tag_docs = $this->docs_in( implode( ' ; ', $tags ) );
+
+		// Names that mean "a text we do not index". A document that is in the registry but has no index
+		// yet (for example a multi-page one not fetched) counts too, and one that has an index does not.
+		$oos_names = array();
+		foreach ( $this->out_of_scope as $name ) {
+			$oos_names[ $name ] = true;
+		}
+		foreach ( $this->docs as $id => $d ) {
+			$names = array_merge( $d['aliases'], '' !== $d['short'] ? array( strtolower( $d['short'] ) ) : array() );
+			foreach ( $names as $name ) {
+				if ( isset( $indexes[ $id ] ) ) {
+					unset( $oos_names[ $name ] );
+				} else {
+					$oos_names[ $name ] = true;
+				}
+			}
+		}
+		$oos_names = array_keys( $oos_names );
 
 		$results = array();
 		$carry   = null; // The document most recently cited by number, for bare "(74)" style cites.
@@ -108,7 +127,7 @@ class AF_Analyzer {
 			$hints     = array_values( array_unique( array_merge( $hint_text, $hint_link ) ) );
 			$lite_ctx  = self::lite( $ctx );
 			$oos       = array();
-			foreach ( $this->out_of_scope as $name ) {
+			foreach ( $oos_names as $name ) {
 				if ( preg_match( '/\b' . preg_quote( $name, '/' ) . '\b/u', $lite_ctx ) ) {
 					$oos[] = $name;
 				}
@@ -313,10 +332,14 @@ class AF_Analyzer {
 	private function cites( $text ) {
 		$lite  = self::lite( $text );
 		$plain = self::straight( $text );
-		$num   = '(?:\s*[,.:]?\s*(?:nn?\.|nos?\.|no|n|\x{00A7}+|paras?\.?|paragraphs?)?\s*)(\d{1,3})(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,3})(?!\d))?';
+		$num   = '(?:\s*[,.:]?\s*(?:nn?\.|nos?\.|no|n|\x{00A7}+|paras?\.?|paragraphs?)?\s*)(\d{1,4})(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,4})(?!\d))?';
 		$out   = array();
-		$add   = function ( $doc, $m ) use ( &$out ) {
+		$docs  = $this->docs;
+		$add   = function ( $doc, $m ) use ( &$out, $docs ) {
 			$a   = (int) $m[1];
+			if ( $a < 1 || $a > $docs[ $doc ]['max'] ) {
+				return; // Not a paragraph number of this document, e.g. a year.
+			}
 			$b   = isset( $m[2] ) && '' !== $m[2] ? (int) $m[2] : 0;
 			$loc = ( $b > $a && $b - $a <= 12 ) ? range( $a, $b ) : array( $a );
 			$out[ $doc . ':' . implode( ',', $loc ) ] = array( 'doc' => $doc, 'loc' => $loc );

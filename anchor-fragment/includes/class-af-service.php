@@ -109,6 +109,9 @@ class AF_Service {
 		}
 		$entry = $reg[ $id ];
 		$key   = 'af_doc_' . $id;
+		if ( ! empty( $entry['multipage'] ) ) {
+			return self::get_multipage_doc( $id, $entry );
+		}
 
 		$cached = get_option( $key );
 		if ( ! $refresh && is_array( $cached )
@@ -169,7 +172,7 @@ class AF_Service {
 		);
 		// Hashed word-run index for matching quotations. It cannot be turned back into the text.
 		$idx = AF_Matcher::build_index( $parsed['paragraphs'] );
-		update_option( 'af_idx_' . $id, $idx, false );
+		self::save_index( $id, $idx );
 		$doc['meta']['shingles'] = count( $idx );
 
 		update_option( $key, $doc, false ); // autoload off: this is never loaded on normal page views.
@@ -195,10 +198,10 @@ class AF_Service {
 			'doc'      => $id,
 			'title'    => $reg[ $id ]['title'],
 			'locator'  => $loc,
-			'url'      => $reg[ $id ]['url'],
+			'url'      => isset( $p['url'] ) ? $p['url'] : $reg[ $id ]['url'],
 			'fragment' => $p['frag'],
 			'words'    => $p['words'],
-			'link'     => AF_Fragment::link( $reg[ $id ]['url'], $p['frag'] ),
+			'link'     => AF_Fragment::link( isset( $p['url'] ) ? $p['url'] : $reg[ $id ]['url'], $p['frag'] ),
 			'excerpt'  => $p['excerpt'],
 			'source'   => $doc['meta']['source'],
 			'fetch_ms' => $doc['meta']['fetch_ms'],
@@ -217,10 +220,19 @@ class AF_Service {
 			return new WP_Error( 'af_no_post', 'No such post: ' . (int) $post_id, array( 'status' => 404 ) );
 		}
 
-		// Every document needs a current index. This fetches any that are missing (2 seconds apart).
-		foreach ( array_keys( self::registry() ) as $id ) {
+		// Every single-page document needs a current index; this fetches any that are missing
+		// (2 seconds apart). Multi-page documents are never fetched here: they are skipped until
+		// they have been fetched from the test page.
+		$unindexed = array();
+		foreach ( self::registry() as $id => $entry ) {
+			if ( ! empty( $entry['multipage'] ) ) {
+				if ( ! self::has_index( $id ) ) {
+					$unindexed[] = $id;
+				}
+				continue;
+			}
 			$doc = self::get_doc( $id, false );
-			if ( ! is_wp_error( $doc ) && ! is_array( get_option( 'af_idx_' . $id ) ) ) {
+			if ( ! is_wp_error( $doc ) && ! self::has_index( $id ) ) {
 				$doc = self::get_doc( $id, true );
 			}
 			if ( is_wp_error( $doc ) ) {
@@ -239,8 +251,7 @@ class AF_Service {
 			wpautop( $post->post_content ),
 			$tags,
 			function ( $doc_id ) {
-				$i = get_option( 'af_idx_' . $doc_id );
-				return is_array( $i ) ? $i : null;
+				return AF_Service::load_index( $doc_id );
 			}
 		);
 
@@ -250,8 +261,341 @@ class AF_Service {
 			'url'            => get_permalink( $post ),
 			'ran_at'         => time(),
 			'plugin_version' => AF_VERSION,
+			'unindexed'      => $unindexed,
 		) + $res;
 		update_option( 'af_match_' . $post->ID, $res, false );
 		return $res;
+	}
+
+	/* ------------------------------------------------------------------ index storage */
+
+	const SHARD_SIZE = 60000; // Entries per stored row, so no single option row grows too large.
+
+	/** Save a document's index, splitting a large one over several options. */
+	public static function save_index( $id, array $idx ) {
+		$old = get_option( 'af_idx_' . $id );
+		if ( is_array( $old ) && isset( $old['_shards'] ) ) {
+			for ( $k = 0; $k < (int) $old['_shards']; $k++ ) {
+				delete_option( 'af_idx_' . $id . '_' . $k );
+			}
+		}
+		if ( count( $idx ) <= self::SHARD_SIZE ) {
+			update_option( 'af_idx_' . $id, $idx, false );
+			return;
+		}
+		$n      = (int) ceil( count( $idx ) / self::SHARD_SIZE );
+		$shards = array_fill( 0, $n, array() );
+		foreach ( $idx as $h => $v ) {
+			$shards[ $h % $n ][ $h ] = $v;
+		}
+		unset( $idx );
+		foreach ( $shards as $k => $part ) {
+			update_option( 'af_idx_' . $id . '_' . $k, $part, false );
+		}
+		update_option( 'af_idx_' . $id, array( '_shards' => $n ), false );
+	}
+
+	public static function has_index( $id ) {
+		return is_array( get_option( 'af_idx_' . $id ) );
+	}
+
+	/** @return array|null */
+	public static function load_index( $id ) {
+		$idx = get_option( 'af_idx_' . $id );
+		if ( ! is_array( $idx ) ) {
+			return null;
+		}
+		if ( ! isset( $idx['_shards'] ) ) {
+			return $idx;
+		}
+		$all = array();
+		for ( $k = 0; $k < (int) $idx['_shards']; $k++ ) {
+			$part = get_option( 'af_idx_' . $id . '_' . $k );
+			if ( ! is_array( $part ) ) {
+				return null; // Incomplete: treat as not indexed rather than match against part of a document.
+			}
+			$all += $part; // Shards hold different keys, so a union is a merge.
+		}
+		return $all;
+	}
+
+	/** Remove everything stored for one document. */
+	public static function clear_doc( $id ) {
+		$idx = get_option( 'af_idx_' . $id );
+		if ( is_array( $idx ) && isset( $idx['_shards'] ) ) {
+			for ( $k = 0; $k < (int) $idx['_shards']; $k++ ) {
+				delete_option( 'af_idx_' . $id . '_' . $k );
+			}
+		}
+		delete_option( 'af_idx_' . $id );
+		delete_option( 'af_doc_' . $id );
+		$st = get_option( 'af_ing_' . $id );
+		if ( is_array( $st ) ) {
+			for ( $i = 0; $i < count( $st['pages'] ); $i++ ) {
+				delete_option( 'af_ip_' . $id . '_' . $i );
+			}
+		}
+		delete_option( 'af_ing_' . $id );
+	}
+
+	/* ------------------------------------------------------------------ multi-page documents */
+
+	/** A multi-page document is only ever read from what a finished fetch left behind. */
+	private static function get_multipage_doc( $id, array $entry ) {
+		$cached = get_option( 'af_doc_' . $id );
+		if ( is_array( $cached )
+			&& ! empty( $cached['meta']['complete'] )
+			&& ( $cached['meta']['parser_version'] ?? 0 ) === AF_Parser::VERSION
+			&& time() - (int) $cached['meta']['fetched_at'] < self::CACHE_TTL ) {
+			$cached['meta']['source'] = 'cache';
+			return $cached;
+		}
+		$st = get_option( 'af_ing_' . $id );
+		$msg = is_array( $st )
+			? sprintf( '%s is partly fetched (%d of %d pages). Continue from the Anchor Fragment Test page.', $entry['title'], (int) $st['next'], count( $st['pages'] ) )
+			: sprintf( '%s has not been fetched yet. Fetch it from the Anchor Fragment Test page (it is %s).', $entry['title'], 'many small pages' );
+		return new WP_Error( 'af_incomplete', $msg, array( 'status' => 409 ) );
+	}
+
+	/** Parse options for a registry entry. */
+	private static function parse_opts( array $entry ) {
+		return isset( $entry['parse'] ) && is_array( $entry['parse'] ) ? $entry['parse'] : array();
+	}
+
+	/**
+	 * Fetch the next few pages of a multi-page document, within a time budget, and save progress.
+	 * Call it again until 'finished' is true. When the last page is done the pieces are joined into
+	 * the ordinary cached document and index.
+	 *
+	 * @return array|WP_Error { done, total, finished, paragraphs, last, errors[], message }
+	 */
+	public static function ingest_step( $id, $budget = 25.0, $restart = false ) {
+		$reg = self::registry();
+		if ( ! isset( $reg[ $id ] ) || empty( $reg[ $id ]['multipage'] ) ) {
+			return new WP_Error( 'af_not_multipage', 'Not a multi-page document: ' . $id, array( 'status' => 400 ) );
+		}
+		$entry = $reg[ $id ];
+		$mp    = $entry['multipage'];
+		if ( $restart ) {
+			self::clear_doc( $id );
+		}
+		$t0 = microtime( true );
+		$st = get_option( 'af_ing_' . $id );
+
+		if ( ! is_array( $st ) ) {
+			$res = self::http_get( $mp['index'] );
+			if ( is_wp_error( $res ) ) {
+				return new WP_Error( $res->get_error_code(), $res->get_error_message(), array( 'status' => 502 ) );
+			}
+			if ( 200 !== $res['code'] ) {
+				return new WP_Error( 'af_http', 'vatican.va answered HTTP ' . $res['code'] . ' for ' . $mp['index'], array( 'status' => 502 ) );
+			}
+			list( $html ) = AF_Parser::to_utf8( $res['body'], $res['content_type'] );
+			$pages        = array();
+			if ( preg_match_all( '#href=["\']?(' . $mp['page_pattern'] . ')#i', $html, $m ) ) {
+				foreach ( $m[1] as $href ) {
+					$pages[ strtoupper( $href ) ] = $href;
+				}
+			}
+			$pages = array_values( $pages );
+			if ( ! $pages ) {
+				return new WP_Error( 'af_no_pages', 'The index page lists no document pages.', array( 'status' => 502 ) );
+			}
+			$st = array(
+				'pages'   => $pages,
+				'next'    => 0,
+				'last'    => 0,
+				'started' => time(),
+				'ms'      => 0,
+				'errors'  => array(),
+				'fails'   => 0,
+			);
+		}
+
+		$base   = preg_replace( '#/[^/]*$#', '/', $mp['index'] );
+		$total  = count( $st['pages'] );
+		$opts   = self::parse_opts( $entry );
+		$window = isset( $mp['window'] ) ? (int) $mp['window'] : AF_Parser::MAX_SKIP;
+		$max    = (int) ( $entry['max_locator'] ?? 0 );
+
+		while ( $st['next'] < $total && ( microtime( true ) - $t0 ) < $budget ) {
+			$i   = (int) $st['next'];
+			$url = $base . $st['pages'][ $i ];
+			$res = self::http_get( $url );
+			if ( is_wp_error( $res ) || 200 !== $res['code'] ) {
+				$st['fails']++;
+				$st['errors'][] = $st['pages'][ $i ] . ': ' . ( is_wp_error( $res ) ? $res->get_error_message() : 'HTTP ' . $res['code'] );
+				if ( $st['fails'] >= 3 ) { // Give up on this page, record it, go on.
+					$st['next']++;
+					$st['fails'] = 0;
+				}
+				break;
+			}
+			$st['fails'] = 0;
+			list( $html ) = AF_Parser::to_utf8( $res['body'], $res['content_type'] );
+			$parsed       = AF_Parser::parse( $html, $max, array_merge( $opts, array( 'after' => (int) $st['last'], 'window' => $window ) ) );
+
+			$paras = array();
+			foreach ( $parsed['paragraphs'] as $loc => $p ) {
+				$f             = AF_Fragment::build( $p['first'], $parsed['page'], $p['lead'] );
+				$paras[ $loc ] = array(
+					'excerpt'  => mb_substr( $p['first'], 0, 120 ),
+					'frag'     => $f['frag'],
+					'words'    => $f['words'],
+					'reason'   => $f['reason'],
+					'inferred' => $p['inferred'],
+					'hash'     => sha1( AF_Parser::fold( $p['full'] ) ),
+					'url'      => $url,
+				);
+			}
+			update_option(
+				'af_ip_' . $id . '_' . $i,
+				array(
+					'paras'  => $paras,
+					'idx'    => AF_Matcher::build_index( $parsed['paragraphs'] ),
+					'blocks' => $parsed['stats']['blocks'],
+				),
+				false
+			);
+			if ( $parsed['paragraphs'] ) {
+				$st['last'] = (int) end( $parsed['paragraphs'] )['n'];
+			}
+			$st['next']++;
+			update_option( 'af_ing_' . $id, $st + array(), false ); // Save after every page so a stopped request loses nothing.
+		}
+
+		$st['ms'] += (int) round( ( microtime( true ) - $t0 ) * 1000 );
+		update_option( 'af_ing_' . $id, $st, false );
+
+		$finished = $st['next'] >= $total;
+		$message  = sprintf( 'Fetched %d of %d pages; last paragraph number %d.', $st['next'], $total, $st['last'] );
+		if ( $finished ) {
+			$done = self::finish_multipage( $id, $entry, $st );
+			if ( is_wp_error( $done ) ) {
+				return $done;
+			}
+			$message = $done;
+		}
+		return array(
+			'done'     => (int) $st['next'],
+			'total'    => $total,
+			'finished' => $finished,
+			'last'     => (int) $st['last'],
+			'errors'   => array_slice( $st['errors'], -5 ),
+			'message'  => $message,
+		);
+	}
+
+	/** Join the saved pages into one cached document and one index, then remove the pieces. */
+	private static function finish_multipage( $id, array $entry, array $st ) {
+		$paras  = array();
+		$idx    = array();
+		$dups   = array();
+		$blocks = 0;
+		$total  = count( $st['pages'] );
+		for ( $i = 0; $i < $total; $i++ ) {
+			$chunk = get_option( 'af_ip_' . $id . '_' . $i );
+			if ( ! is_array( $chunk ) ) {
+				continue;
+			}
+			$blocks += (int) $chunk['blocks'];
+			foreach ( $chunk['paras'] as $loc => $p ) {
+				if ( isset( $paras[ $loc ] ) ) {
+					$dups[] = (int) $loc;
+					continue;
+				}
+				$paras[ $loc ] = $p;
+			}
+			foreach ( $chunk['idx'] as $h => $v ) {
+				if ( ! isset( $idx[ $h ] ) ) {
+					$idx[ $h ] = $v;
+				} else {
+					$idx[ $h ] = array_values( array_unique( array_merge( (array) $idx[ $h ], (array) $v ) ) );
+				}
+			}
+		}
+		ksort( $paras, SORT_NUMERIC );
+		$nums = array_map( 'intval', array_keys( $paras ) );
+		$min  = $nums ? min( $nums ) : 0;
+		$max  = $nums ? max( $nums ) : 0;
+		$gaps = array();
+		for ( $n = 1; $n <= $max; $n++ ) {
+			if ( ! isset( $paras[ (string) $n ] ) ) {
+				$gaps[] = $n;
+			}
+		}
+		$no_frag = array();
+		foreach ( $paras as $loc => $p ) {
+			if ( empty( $p['frag'] ) ) {
+				$no_frag[ $loc ] = $p['reason'];
+			}
+		}
+
+		$doc = array(
+			'meta'  => array(
+				'id'              => $id,
+				'url'             => $entry['url'],
+				'final_url'       => $entry['url'],
+				'http'            => 200,
+				'bytes'           => 0,
+				'charset'         => 'multi-page',
+				'content_type'    => '',
+				'document_policy' => '',
+				'fetched_at'      => time(),
+				'fetch_ms'        => (int) $st['ms'],
+				'parser_version'  => AF_Parser::VERSION,
+				'source'          => 'fetched',
+				'complete'        => true,
+				'pages'           => $total,
+				'page_errors'     => $st['errors'],
+				'expected_count'  => $entry['expected_count'] ?? null,
+				'shingles'        => count( $idx ),
+				'stats'           => array(
+					'count'       => count( $paras ),
+					'min'         => $min,
+					'max'         => $max,
+					'gaps'        => $gaps,
+					'rejected'    => array(),
+					'inferred'    => array(),
+					'blocks'      => $blocks,
+					'duplicates'  => $dups,
+					'no_fragment' => $no_frag,
+				),
+			),
+			'paras' => $paras,
+		);
+		self::save_index( $id, $idx );
+		update_option( 'af_doc_' . $id, $doc, false );
+		for ( $i = 0; $i < $total; $i++ ) {
+			delete_option( 'af_ip_' . $id . '_' . $i );
+		}
+		delete_option( 'af_ing_' . $id );
+
+		return sprintf(
+			'Finished: %d paragraphs (%d to %d) from %d pages, %d gap(s), %d duplicate number(s), %d page error(s).',
+			count( $paras ), $min, $max, $total, count( $gaps ), count( $dups ), count( $st['errors'] )
+		);
+	}
+
+	/** One row per registry document, for the test page. */
+	public static function status() {
+		$rows = array();
+		foreach ( self::registry() as $id => $entry ) {
+			$doc = get_option( 'af_doc_' . $id );
+			$st  = get_option( 'af_ing_' . $id );
+			$row = array(
+				'id'        => $id,
+				'title'     => $entry['title'],
+				'multipage' => ! empty( $entry['multipage'] ),
+				'expected'  => $entry['expected_count'] ?? null,
+				'indexed'   => self::has_index( $id ),
+				'count'     => is_array( $doc ) ? (int) $doc['meta']['stats']['count'] : null,
+				'gaps'      => is_array( $doc ) ? count( $doc['meta']['stats']['gaps'] ) : null,
+				'version'   => is_array( $doc ) ? (int) $doc['meta']['parser_version'] : null,
+				'progress'  => is_array( $st ) ? array( 'done' => (int) $st['next'], 'total' => count( $st['pages'] ) ) : null,
+			);
+			$rows[] = $row;
+		}
+		return $rows;
 	}
 }

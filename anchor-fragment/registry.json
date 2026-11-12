@@ -115,6 +115,23 @@
 			"scheme": "paragraph",
 			"expected_count": 121,
 			"url": "https://www.vatican.va/content/leo-xiv/en/apost_exhortations/documents/20251004-dilexi-te.html"
+		},
+		{
+			"id": "catechism",
+			"title": "Catechism of the Catholic Church",
+			"short": "CCC",
+			"aliases": ["catechism of the catholic church", "catechism", "ccc"],
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 2865,
+			"max_locator": 2865,
+			"url": "https://www.vatican.va/archive/ENG0015/_INDEX.HTM",
+			"multipage": {
+				"index": "https://www.vatican.va/archive/ENG0015/_INDEX.HTM",
+				"page_pattern": "__P[0-9A-Za-z]+\\.HTM",
+				"window": 40
+			},
+			"parse": { "bare_numbers": true, "strip_sup": true, "repair": false }
 		}
 	]
 }

@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'AF_TEST' ) ) {
 class AF_Parser {
 
 	/** Bump when parsing rules change, so cached results are rebuilt. */
-	const VERSION = 5; // 5: headings printed as paragraphs leave the previous one; 4: optional max locator; 3: documents also build the hashed word-run index used for matching.
+	const VERSION = 6; // 6: options for pages that print bare numbers, inline footnote marks or only part of a document; 5: headings printed as paragraphs leave the previous one; 4: optional max locator; 3: documents also build the hashed word-run index used for matching.
 
 	/** Largest forward jump in numbering still accepted (it is reported as a gap). */
 	const MAX_SKIP = 5;
@@ -78,6 +78,13 @@ class AF_Parser {
 
 	/**
 	 * @param string $html UTF-8 HTML.
+	 * @param array  $opts {
+	 *   bare_numbers: paragraphs start "27 Text" instead of "27. Text";
+	 *   strip_sup:    footnote marks in <sup> become "[5]" in the text;
+	 *   after:        the page is part of a longer document and this is the last number on the page before it;
+	 *   repair:       false switches off the repair of single missing numbers (default true);
+	 *   window:       how far past that the first number on this page may jump (default MAX_SKIP).
+	 * }
 	 * @param int    $max_locator If set, numbers above this are never taken as paragraphs (some pages print footnotes as numbered paragraphs that continue the sequence).
 	 * @return array {
 	 *   paragraphs: locator => [ n, lead, first, full, inferred ],
@@ -85,10 +92,25 @@ class AF_Parser {
 	 *   stats:      count, min, max, gaps[], rejected[], inferred[], blocks
 	 * }
 	 */
-	public static function parse( $html, $max_locator = 0 ) {
+	public static function parse( $html, $max_locator = 0, array $opts = array() ) {
 		// The text is already UTF-8. A leftover <meta charset=...> (e.g. windows-1252) would make
 		// libxml decode it a second time and garble or truncate the page, so remove such tags.
 		$html = preg_replace( '/<meta\b[^>]*\bcharset\s*=[^>]*>/i', '', $html );
+		if ( ! empty( $opts['strip_sup'] ) ) {
+			// A footnote mark becomes " [5]", which the matcher ignores and the fragment builder stops at.
+			$html = preg_replace_callback(
+				'#<sup\b[^>]*>(.*?)</sup>#is',
+				function ( $m ) {
+					$d = trim( html_entity_decode( strip_tags( $m[1] ) ) );
+					return preg_match( '/^\d{1,3}$/', $d ) ? ' [' . $d . ']' : '';
+				},
+				$html
+			);
+		}
+		$bare  = ! empty( $opts['bare_numbers'] );
+		$from  = isset( $opts['after'] ) ? (int) $opts['after'] : 0;
+		$win   = isset( $opts['window'] ) ? (int) $opts['window'] : self::MAX_SKIP;
+		$start = $bare ? '/^(\d{1,4})\s+(?=\S)/u' : '/^(\d{1,4})\.(?:\s+|(?=[^\d\s]))/u';
 
 		$prev = libxml_use_internal_errors( true );
 		$dom  = new DOMDocument();
@@ -126,16 +148,16 @@ class AF_Parser {
 		// Each paragraph keeps the indexes of its blocks; text is assembled afterwards.
 		$paras      = array();
 		$rej_blocks = array();
-		$last       = 0;
+		$last       = $from;
 		$cur        = null;
 		foreach ( $blocks as $i => $b ) {
 			if ( preg_match( '/^h[1-6]$/', $b['tag'] ) || $b['note'] ) {
 				$cur = null; // Headings and footnotes end the current paragraph.
 				continue;
 			}
-			if ( 'p' === $b['tag'] && preg_match( '/^(\d{1,4})\.(?:\s+|(?=[^\d\s]))/u', $b['text'], $m ) ) {
+			if ( 'p' === $b['tag'] && preg_match( $start, $b['text'], $m ) ) {
 				$n = (int) $m[1];
-				if ( $n > $last && $n <= $last + self::MAX_SKIP && ( ! $max_locator || $n <= $max_locator ) ) {
+				if ( $n > $last && $n <= $last + ( $paras ? self::MAX_SKIP : $win ) && ( ! $max_locator || $n <= $max_locator ) ) {
 					// Some pages mark section headings as plain paragraphs. Short lines with no closing
 					// punctuation that sit directly before the next numbered paragraph belong to it, not the last one.
 					if ( null !== $cur ) {
@@ -165,7 +187,7 @@ class AF_Parser {
 		// Repair single-number gaps. If exactly one out-of-sequence numbered block sits between
 		// paragraph g-1 and g+1, the source most likely mis-numbered it (e.g. "81." for 87).
 		$inferred = array();
-		for ( $g = 2; $g < $last; $g++ ) {
+		for ( $g = 2; $g < $last && ( ! isset( $opts['repair'] ) || $opts['repair'] ); $g++ ) {
 			$before = isset( $paras[ (string) ( $g - 1 ) ] ) ? $paras[ (string) ( $g - 1 ) ] : null;
 			$after  = isset( $paras[ (string) ( $g + 1 ) ] ) ? $paras[ (string) ( $g + 1 ) ] : null;
 			if ( isset( $paras[ (string) $g ] ) || ! $before || ! $after ) {
@@ -230,7 +252,7 @@ class AF_Parser {
 
 		// Gaps in the sequence 1..max.
 		$gaps = array();
-		$prev = 0;
+		$prev = $from;
 		foreach ( $paras as $p ) {
 			for ( $i = $prev + 1; $i < $p['n']; $i++ ) {
 				$gaps[] = $i;

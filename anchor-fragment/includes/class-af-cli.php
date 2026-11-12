@@ -117,6 +117,33 @@ class AF_CLI {
 	}
 
 	/**
+	 * Fetch a multi-page document (the Catechism) all the way through.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <doc>
+	 * : Document id from registry.json, e.g. catechism
+	 *
+	 * [--restart]
+	 * : Throw away partial progress and start again.
+	 *
+	 * @param array $args       Positional arguments.
+	 * @param array $assoc_args Flags.
+	 */
+	public function ingest( $args, $assoc_args ) {
+		$restart = isset( $assoc_args['restart'] );
+		do {
+			$res = AF_Service::ingest_step( $args[0], 50.0, $restart );
+			$restart = false;
+			if ( is_wp_error( $res ) ) {
+				WP_CLI::error( $res->get_error_message() );
+			}
+			WP_CLI::log( $res['message'] );
+		} while ( ! $res['finished'] );
+		WP_CLI::success( 'Done.' );
+	}
+
+	/**
 	 * Find which paragraph each quotation in a post came from.
 	 *
 	 * ## OPTIONS
@@ -162,7 +189,7 @@ class AF_CLI {
 	public function clear( $args ) {
 		$ids = $args ? array( $args[0] ) : array_keys( AF_Service::registry() );
 		foreach ( $ids as $id ) {
-			delete_option( 'af_doc_' . $id );
+			AF_Service::clear_doc( $id );
 		}
 		WP_CLI::success( 'Cleared ' . count( $ids ) . ' cached document(s).' );
 	}

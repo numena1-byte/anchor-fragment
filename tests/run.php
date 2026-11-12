@@ -136,5 +136,24 @@ $ls = '<html><body><p>1. First article about apples:</p><p>a) the first thing;</
 $l = AF_Parser::parse( $ls );
 check( 'list items stay with their article', false !== strpos( $l['paragraphs']['1']['full'], 'last thing' ), $l['paragraphs']['1']['full'] );
 
+// Catechism-style page: bare numbers, footnote marks inside the text, page starts mid-document.
+$cc = '<html><body><p>CHAPTER ONE</p><p>I. The Desire for God</p>'
+	. '<p>27 The desire for God is written in the human heart.<sup><a name="-K" href="#$K">1</a></sup> It calls us home.</p>'
+	. '<p>A quotation continuing paragraph 27.</p>'
+	. '<p>28 In many ways, throughout history, men have given expression to their quest.</p>'
+	. '<p>1992 was the year of a famous event that is mentioned later.</p>'
+	. '<p>30 Let the hearts of those who seek the Lord rejoice.<sup><a href="#$O">5</a></sup> Although man can forget.</p></body></html>';
+$o  = array( 'bare_numbers' => true, 'strip_sup' => true, 'after' => 26, 'window' => 5, 'repair' => false );
+$c  = AF_Parser::parse( $cc, 2865, $o );
+check( 'bare numbers: 27, 28 and 30 found', array( '27', '28', '30' ) === array_map( 'strval', array_keys( $c['paragraphs'] ) ), json_encode( array_keys( $c['paragraphs'] ) ) );
+check( 'bare numbers: footnote mark becomes [1], not glued to the word', false === strpos( $c['paragraphs']['27']['full'], 'heart.1' ) && false !== strpos( $c['paragraphs']['27']['full'], 'human heart. [1] It calls' ), $c['paragraphs']['27']['full'] );
+$fr = AF_Fragment::build( 'The desire for God is written in the human heart. [1] It calls us home.', AF_Parser::fold( 'xx' ), '27 ' );
+check( 'fragment stops before the footnote mark', null === $fr['frag'] || false === strpos( urldecode( $fr['frag'] ), '[1]' ), json_encode( $fr ) );
+check( 'bare numbers: continuation paragraph kept', false !== strpos( $c['paragraphs']['27']['full'], 'continuing paragraph 27' ) );
+check( 'bare numbers: a year inside the page is not a paragraph', ! isset( $c['paragraphs']['1992'] ) && array( 29 ) === $c['stats']['gaps'], json_encode( $c['stats']['gaps'] ) );
+$far = AF_Parser::parse( '<html><body><p>1992 was the year of a famous event.</p><p>27 The desire for God is written in the heart.</p></body></html>', 2865, $o );
+check( 'bare numbers: a year at the top of a page is out of the window', array( '27' ) === array_map( 'strval', array_keys( $far['paragraphs'] ) ), json_encode( array_keys( $far['paragraphs'] ) ) );
+check( 'bare numbers: first paragraph of a page outside the window is refused', 0 === AF_Parser::parse( '<html><body><p>40 Too far from 26.</p></body></html>', 2865, $o )['stats']['count'] );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

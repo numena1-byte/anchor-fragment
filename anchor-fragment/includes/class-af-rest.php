@@ -4,6 +4,8 @@
  *
  *   GET /wp-json/anchorfrag/v1/link?doc=laudato-si&locator=12
  *   GET /wp-json/anchorfrag/v1/match?post_id=123
+ *   GET /wp-json/anchorfrag/v1/status
+ *   POST /wp-json/anchorfrag/v1/ingest   (doc=catechism; administrators only)
  *
  * Both need a logged-in user who can edit posts. They take document ids from the
  * registry and post ids, never URLs, so they cannot be pointed at arbitrary addresses.
@@ -19,6 +21,40 @@ class AF_Rest {
 	}
 
 	public static function register_routes() {
+		register_rest_route(
+			'anchorfrag/v1',
+			'/status',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( __CLASS__, 'handle_status' ),
+				'permission_callback' => function () {
+					return current_user_can( 'edit_posts' );
+				},
+			)
+		);
+
+		register_rest_route(
+			'anchorfrag/v1',
+			'/ingest',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'handle_ingest' ),
+				'permission_callback' => function () {
+					return current_user_can( 'manage_options' );
+				},
+				'args'                => array(
+					'doc'     => array(
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_key',
+					),
+					'restart' => array(
+						'default'           => false,
+						'sanitize_callback' => 'rest_sanitize_boolean',
+					),
+				),
+			)
+		);
+
 		register_rest_route(
 			'anchorfrag/v1',
 			'/link',
@@ -66,6 +102,18 @@ class AF_Rest {
 		);
 	}
 
+	public static function handle_status() {
+		return rest_ensure_response( AF_Service::status() );
+	}
+
+	public static function handle_ingest( WP_REST_Request $req ) {
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		}
+		$res = AF_Service::ingest_step( $req['doc'], 25.0, (bool) $req['restart'] );
+		return is_wp_error( $res ) ? $res : rest_ensure_response( $res );
+	}
+
 	public static function handle_link( WP_REST_Request $req ) {
 		$refresh = (bool) $req['refresh'] && current_user_can( 'manage_options' );
 		$res     = AF_Service::link( $req['doc'], $req['locator'], $refresh );
@@ -88,13 +136,38 @@ class AF_Rest {
 	public static function render_page() {
 		$cfg = array(
 			'link'  => rest_url( 'anchorfrag/v1/link' ),
-			'match' => rest_url( 'anchorfrag/v1/match' ),
+			'match'  => rest_url( 'anchorfrag/v1/match' ),
+			'ingest' => rest_url( 'anchorfrag/v1/ingest' ),
+			'status' => rest_url( 'anchorfrag/v1/status' ),
 			'nonce' => wp_create_nonce( 'wp_rest' ),
 		);
 		?>
 		<div class="wrap">
 			<h1>Anchor Fragment Test</h1>
 
+			<h2>Documents</h2>
+			<p>Single-page documents are fetched automatically the first time they are needed. A multi-page document such as the Catechism (about 370 pages) is fetched here, a few pages at a time, 2 seconds apart; the whole job takes roughly 15 to 20 minutes. Keep this page open until it says it has finished. If you leave, press the button again and it carries on where it stopped.</p>
+			<table class="widefat striped" style="max-width:60em" id="af-docs">
+				<thead><tr><th>Document</th><th>Paragraphs</th><th>Expected</th><th>Index</th><th></th></tr></thead>
+				<tbody>
+				<?php foreach ( AF_Service::status() as $row ) : ?>
+					<tr data-doc="<?php echo esc_attr( $row['id'] ); ?>">
+						<td><?php echo esc_html( $row['title'] ); ?><?php echo $row['multipage'] ? ' <em>(multi-page)</em>' : ''; ?></td>
+						<td class="af-count"><?php echo null === $row['count'] ? '–' : esc_html( $row['count'] . ( $row['gaps'] ? ', ' . $row['gaps'] . ' gap(s)' : '' ) ); ?></td>
+						<td><?php echo esc_html( null === $row['expected'] ? '' : $row['expected'] ); ?></td>
+						<td class="af-idx"><?php echo $row['indexed'] ? 'yes' : ( $row['progress'] ? esc_html( $row['progress']['done'] . ' of ' . $row['progress']['total'] . ' pages' ) : 'no' ); ?></td>
+						<td>
+							<?php if ( $row['multipage'] && current_user_can( 'manage_options' ) ) : ?>
+								<button class="button af-fetch" type="button"><?php echo $row['indexed'] ? 'Fetch again' : ( $row['progress'] ? 'Continue' : 'Fetch' ); ?></button>
+							<?php endif; ?>
+						</td>
+					</tr>
+				<?php endforeach; ?>
+				</tbody>
+			</table>
+			<p id="af-docs-msg" style="max-width:60em"></p>
+
+			<hr>
 			<h2>Build a link</h2>
 			<p>Enter a document and a paragraph number. The server fetches the Vatican page (once, then cached), finds the paragraph and returns a link. Click the link to check that your browser scrolls to and highlights the paragraph.</p>
 			<form id="af-form">
@@ -124,6 +197,36 @@ class AF_Rest {
 		<script>
 		(function () {
 			var cfg = <?php echo wp_json_encode( $cfg ); ?>;
+
+
+			/* ---- fetch multi-page documents ---- */
+			var dmsg = document.getElementById('af-docs-msg');
+			Array.prototype.forEach.call(document.querySelectorAll('.af-fetch'), function (btn) {
+				btn.addEventListener('click', function () {
+					var row = btn.closest('tr');
+					var doc = row.getAttribute('data-doc');
+					var restart = /again/.test(btn.textContent);
+					var idx = row.querySelector('.af-idx');
+					btn.disabled = true;
+					function step(first) {
+						var q = new URLSearchParams({ doc: doc });
+						if (first && restart) { q.set('restart', '1'); }
+						return fetch(cfg.ingest + '?' + q.toString(), { method: 'POST', headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' })
+							.then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+							.then(function (res) {
+								if (!res.ok) { dmsg.textContent = 'Stopped: ' + (res.body.message || 'request failed') + ' Press the button to try again.'; btn.disabled = false; return; }
+								var b = res.body;
+								idx.textContent = b.finished ? 'yes' : b.done + ' of ' + b.total + ' pages';
+								dmsg.textContent = b.message + (b.errors && b.errors.length ? ' Problems: ' + b.errors.join('; ') : '');
+								if (b.finished) { btn.disabled = false; btn.textContent = 'Fetch again'; return; }
+								return step(false);
+							})
+							.catch(function (err) { dmsg.textContent = 'Request failed (' + err + '). Press the button to carry on.'; btn.disabled = false; });
+					}
+					dmsg.textContent = 'Starting…';
+					step(true);
+				});
+			});
 
 			/* ---- build a link ---- */
 			var form = document.getElementById('af-form');
