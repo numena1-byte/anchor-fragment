@@ -70,6 +70,7 @@
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 5,
+			"max_locator": 5,
 			"url": "https://www.vatican.va/archive/hist_councils/ii_vatican_council/documents/vat-ii_decl_19651028_nostra-aetate_en.html"
 		},
 		{
@@ -80,6 +81,7 @@
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 26,
+			"max_locator": 26,
 			"url": "https://www.vatican.va/archive/hist_councils/ii_vatican_council/documents/vat-ii_const_19651118_dei-verbum_en.html"
 		},
 		{
@@ -90,6 +92,7 @@
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 15,
+			"max_locator": 15,
 			"url": "https://www.vatican.va/archive/hist_councils/ii_vatican_council/documents/vat-ii_decl_19651207_dignitatis-humanae_en.html"
 		},
 		{
@@ -100,6 +103,7 @@
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 24,
+			"max_locator": 24,
 			"url": "https://www.vatican.va/archive/hist_councils/ii_vatican_council/documents/vat-ii_decree_19641121_unitatis-redintegratio_en.html"
 		},
 		{

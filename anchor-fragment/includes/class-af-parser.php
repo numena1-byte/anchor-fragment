@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'AF_TEST' ) ) {
 class AF_Parser {
 
 	/** Bump when parsing rules change, so cached results are rebuilt. */
-	const VERSION = 3; // 3: documents also build the hashed word-run index used for matching.
+	const VERSION = 4; // 4: optional max locator; 3: documents also build the hashed word-run index used for matching.
 
 	/** Largest forward jump in numbering still accepted (it is reported as a gap). */
 	const MAX_SKIP = 5;
@@ -69,13 +69,14 @@ class AF_Parser {
 
 	/**
 	 * @param string $html UTF-8 HTML.
+	 * @param int    $max_locator If set, numbers above this are never taken as paragraphs (some pages print footnotes as numbered paragraphs that continue the sequence).
 	 * @return array {
 	 *   paragraphs: locator => [ n, lead, first, full, inferred ],
 	 *   page:       folded text of every block, one per line (for uniqueness checks),
 	 *   stats:      count, min, max, gaps[], rejected[], inferred[], blocks
 	 * }
 	 */
-	public static function parse( $html ) {
+	public static function parse( $html, $max_locator = 0 ) {
 		// The text is already UTF-8. A leftover <meta charset=...> (e.g. windows-1252) would make
 		// libxml decode it a second time and garble or truncate the page, so remove such tags.
 		$html = preg_replace( '/<meta\b[^>]*\bcharset\s*=[^>]*>/i', '', $html );
@@ -125,7 +126,7 @@ class AF_Parser {
 			}
 			if ( 'p' === $b['tag'] && preg_match( '/^(\d{1,4})\.(?:\s+|(?=[^\d\s]))/u', $b['text'], $m ) ) {
 				$n = (int) $m[1];
-				if ( $n > $last && $n <= $last + self::MAX_SKIP ) {
+				if ( $n > $last && $n <= $last + self::MAX_SKIP && ( ! $max_locator || $n <= $max_locator ) ) {
 					$key           = (string) $n;
 					$paras[ $key ] = array(
 						'n'        => $n,

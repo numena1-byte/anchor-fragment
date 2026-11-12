@@ -129,7 +129,7 @@ class AF_Service {
 		}
 
 		list( $html, $charset ) = AF_Parser::to_utf8( $res['body'], $res['content_type'] );
-		$parsed                 = AF_Parser::parse( $html );
+		$parsed                 = AF_Parser::parse( $html, (int) ( $entry['max_locator'] ?? 0 ) );
 
 		$paras     = array();
 		$no_frag   = array();

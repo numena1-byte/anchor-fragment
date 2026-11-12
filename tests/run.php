@@ -119,5 +119,12 @@ $sub = '<html><body><p>1. First paragraph about apples and pears.</p><p>1. A sub
 $s = AF_Parser::parse( $sub );
 check( 'sublist: nothing invented when there is no gap', 2 === $s['stats']['count'] && array() === $s['stats']['inferred'] && array( 1 ) === $s['stats']['rejected'], json_encode( $s['stats'] ) );
 
+// Footnotes printed as numbered paragraphs continue the sequence; a cap keeps them out.
+$fn = '<html><body><p>1. First article about apples and pears.</p><p>2. Second article about oranges and plums.</p>'
+	. '<p>3. Cf. Gal. 3:7</p><p>4. Cf. Matt. 5:45</p></body></html>';
+$capped = AF_Parser::parse( $fn, 2 );
+check( 'max locator: footnote numbers are not taken as paragraphs', 2 === $capped['stats']['count'], json_encode( $capped['stats'] ) );
+check( 'max locator: not set, they are', 4 === AF_Parser::parse( $fn )['stats']['count'] );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );
