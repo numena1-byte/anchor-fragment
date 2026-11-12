@@ -352,7 +352,7 @@ class AF_Service {
 		}
 		$st = get_option( 'af_ing_' . $id );
 		$msg = is_array( $st )
-			? sprintf( '%s is partly fetched (%d of %d pages). Continue from the Anchor Fragment Test page.', $entry['title'], (int) $st['next'], count( $st['pages'] ) )
+			? sprintf( '%s is partly fetched (%d of %d pages). Continue from the Anchor Fragment Test page.', $entry['title'], (int) $st['next'], count( $st['order'] ) )
 			: sprintf( '%s has not been fetched yet. Fetch it from the Anchor Fragment Test page (it is %s).', $entry['title'], 'many small pages' );
 		return new WP_Error( 'af_incomplete', $msg, array( 'status' => 409 ) );
 	}
@@ -364,12 +364,13 @@ class AF_Service {
 
 	/**
 	 * Fetch the next few pages of a multi-page document, within a time budget, and save progress.
-	 * Call it again until 'finished' is true. When the last page is done the pieces are joined into
+	 * With $sample, only about 36 pages are fetched: the start, three spots in the middle and the end
+	 * (five runs of consecutive pages), which is enough to try the parser. Call it again until 'finished' is true. When the last page is done the pieces are joined into
 	 * the ordinary cached document and index.
 	 *
 	 * @return array|WP_Error { done, total, finished, paragraphs, last, errors[], message }
 	 */
-	public static function ingest_step( $id, $budget = 25.0, $restart = false ) {
+	public static function ingest_step( $id, $budget = 25.0, $restart = false, $sample = false ) {
 		$reg = self::registry();
 		if ( ! isset( $reg[ $id ] ) || empty( $reg[ $id ]['multipage'] ) ) {
 			return new WP_Error( 'af_not_multipage', 'Not a multi-page document: ' . $id, array( 'status' => 400 ) );
@@ -401,7 +402,27 @@ class AF_Service {
 			if ( ! $pages ) {
 				return new WP_Error( 'af_no_pages', 'The index page lists no document pages.', array( 'status' => 502 ) );
 			}
+			$count = count( $pages );
+			$runs  = array( array( 0, $count - 1 ) );
+			if ( $sample && $count > 60 ) {
+				$runs = array(
+					array( 0, 11 ),
+					array( (int) ( $count * 0.25 ), (int) ( $count * 0.25 ) + 5 ),
+					array( (int) ( $count * 0.50 ), (int) ( $count * 0.50 ) + 5 ),
+					array( (int) ( $count * 0.75 ), (int) ( $count * 0.75 ) + 5 ),
+					array( $count - 6, $count - 1 ),
+				);
+			}
+			$order = array();
+			foreach ( $runs as $r ) {
+				for ( $k = $r[0]; $k <= $r[1]; $k++ ) {
+					$order[] = $k;
+				}
+			}
 			$st = array(
+				'sample'  => count( $runs ) > 1,
+				'runs'    => $runs,
+				'order'   => $order,
 				'pages'   => $pages,
 				'next'    => 0,
 				'last'    => 0,
@@ -413,14 +434,23 @@ class AF_Service {
 		}
 
 		$base   = preg_replace( '#/[^/]*$#', '/', $mp['index'] );
-		$total  = count( $st['pages'] );
+		$total  = count( $st['order'] );
 		$opts   = self::parse_opts( $entry );
 		$window = isset( $mp['window'] ) ? (int) $mp['window'] : AF_Parser::MAX_SKIP;
 		$max    = (int) ( $entry['max_locator'] ?? 0 );
 
 		while ( $st['next'] < $total && ( microtime( true ) - $t0 ) < $budget ) {
-			$i   = (int) $st['next'];
+			$i   = (int) $st['order'][ (int) $st['next'] ]; // Position in the page list; chunks are stored under it.
 			$url = $base . $st['pages'][ $i ];
+			$run_start = false;
+			foreach ( $st['runs'] as $r ) {
+				if ( $i === $r[0] ) {
+					$run_start = true; // The first page of a run: the previous page was not its neighbour.
+				}
+			}
+			if ( $run_start && $st['sample'] ) {
+				$st['last'] = 0;
+			}
 			$res = self::http_get( $url );
 			if ( is_wp_error( $res ) || 200 !== $res['code'] ) {
 				$st['fails']++;
@@ -433,7 +463,7 @@ class AF_Service {
 			}
 			$st['fails'] = 0;
 			list( $html ) = AF_Parser::to_utf8( $res['body'], $res['content_type'] );
-			$parsed       = AF_Parser::parse( $html, $max, array_merge( $opts, array( 'after' => (int) $st['last'], 'window' => $window ) ) );
+			$parsed       = AF_Parser::parse( $html, $max, array_merge( $opts, array( 'after' => (int) $st['last'], 'window' => ( $run_start && $st['sample'] ) ? max( $max, 1 ) : $window ) ) );
 
 			$paras = array();
 			foreach ( $parsed['paragraphs'] as $loc => $p ) {
@@ -468,7 +498,7 @@ class AF_Service {
 		update_option( 'af_ing_' . $id, $st, false );
 
 		$finished = $st['next'] >= $total;
-		$message  = sprintf( 'Fetched %d of %d pages; last paragraph number %d.', $st['next'], $total, $st['last'] );
+		$message  = sprintf( 'Fetched %d of %d pages%s; last paragraph number %d.', $st['next'], $total, ! empty( $st['sample'] ) ? ' (sample)' : '', $st['last'] );
 		if ( $finished ) {
 			$done = self::finish_multipage( $id, $entry, $st );
 			if ( is_wp_error( $done ) ) {
@@ -488,12 +518,13 @@ class AF_Service {
 
 	/** Join the saved pages into one cached document and one index, then remove the pieces. */
 	private static function finish_multipage( $id, array $entry, array $st ) {
-		$paras  = array();
-		$idx    = array();
-		$dups   = array();
-		$blocks = 0;
-		$total  = count( $st['pages'] );
-		for ( $i = 0; $i < $total; $i++ ) {
+		$paras   = array();
+		$idx     = array();
+		$dups    = array();
+		$blocks  = 0;
+		$total   = count( $st['order'] );
+		$by_page = array();
+		foreach ( $st['order'] as $i ) {
 			$chunk = get_option( 'af_ip_' . $id . '_' . $i );
 			if ( ! is_array( $chunk ) ) {
 				continue;
@@ -504,7 +535,8 @@ class AF_Service {
 					$dups[] = (int) $loc;
 					continue;
 				}
-				$paras[ $loc ] = $p;
+				$paras[ $loc ]    = $p;
+				$by_page[ $i ][] = (int) $loc;
 			}
 			foreach ( $chunk['idx'] as $h => $v ) {
 				if ( ! isset( $idx[ $h ] ) ) {
@@ -518,10 +550,26 @@ class AF_Service {
 		$nums = array_map( 'intval', array_keys( $paras ) );
 		$min  = $nums ? min( $nums ) : 0;
 		$max  = $nums ? max( $nums ) : 0;
+
+		// Gaps: in a full fetch, anything missing from 1 to the highest number. In a sample, only
+		// numbers missing inside a run of consecutive pages (the rest was never fetched).
 		$gaps = array();
-		for ( $n = 1; $n <= $max; $n++ ) {
-			if ( ! isset( $paras[ (string) $n ] ) ) {
-				$gaps[] = $n;
+		foreach ( $st['runs'] as $r ) {
+			$rn = array();
+			for ( $k = $r[0]; $k <= $r[1]; $k++ ) {
+				if ( isset( $by_page[ $k ] ) ) {
+					$rn = array_merge( $rn, $by_page[ $k ] );
+				}
+			}
+			if ( ! $rn ) {
+				continue;
+			}
+			$from = $st['sample'] ? min( $rn ) : 1;
+			$to   = max( $rn );
+			for ( $n = $from; $n <= $to; $n++ ) {
+				if ( ! isset( $paras[ (string) $n ] ) ) {
+					$gaps[] = $n;
+				}
 			}
 		}
 		$no_frag = array();
@@ -546,6 +594,8 @@ class AF_Service {
 				'parser_version'  => AF_Parser::VERSION,
 				'source'          => 'fetched',
 				'complete'        => true,
+				'partial'         => ! empty( $st['sample'] ),
+				'runs'            => $st['runs'],
 				'pages'           => $total,
 				'page_errors'     => $st['errors'],
 				'expected_count'  => $entry['expected_count'] ?? null,
@@ -566,14 +616,17 @@ class AF_Service {
 		);
 		self::save_index( $id, $idx );
 		update_option( 'af_doc_' . $id, $doc, false );
-		for ( $i = 0; $i < $total; $i++ ) {
+		foreach ( $st['order'] as $i ) {
 			delete_option( 'af_ip_' . $id . '_' . $i );
 		}
 		delete_option( 'af_ing_' . $id );
 
 		return sprintf(
-			'Finished: %d paragraphs (%d to %d) from %d pages, %d gap(s), %d duplicate number(s), %d page error(s).',
-			count( $paras ), $min, $max, $total, count( $gaps ), count( $dups ), count( $st['errors'] )
+			'Finished%s: %d paragraphs (%d to %d) from %d pages, %d gap(s)%s, %d duplicate number(s), %d page error(s).',
+			$st['sample'] ? ' (sample only)' : '',
+			count( $paras ), $min, $max, $total, count( $gaps ),
+			$gaps ? ' [' . implode( ', ', array_slice( $gaps, 0, 15 ) ) . ( count( $gaps ) > 15 ? ', …' : '' ) . ']' : '',
+			count( $dups ), count( $st['errors'] )
 		);
 	}
 
@@ -592,7 +645,8 @@ class AF_Service {
 				'count'     => is_array( $doc ) ? (int) $doc['meta']['stats']['count'] : null,
 				'gaps'      => is_array( $doc ) ? count( $doc['meta']['stats']['gaps'] ) : null,
 				'version'   => is_array( $doc ) ? (int) $doc['meta']['parser_version'] : null,
-				'progress'  => is_array( $st ) ? array( 'done' => (int) $st['next'], 'total' => count( $st['pages'] ) ) : null,
+				'partial'   => is_array( $doc ) && ! empty( $doc['meta']['partial'] ),
+				'progress'  => is_array( $st ) ? array( 'done' => (int) $st['next'], 'total' => count( $st['order'] ) ) : null,
 			);
 			$rows[] = $row;
 		}

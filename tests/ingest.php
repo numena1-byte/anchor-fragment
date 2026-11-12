@@ -106,5 +106,31 @@ $doc = AF_Service::get_doc( 'catechism' );
 check( 'missing page: finished, paragraphs 3 and 4 reported as gaps', ! is_wp_error( $doc ) && array( 3, 4 ) === $doc['meta']['stats']['gaps'], is_wp_error( $doc ) ? $doc->get_error_message() : json_encode( $doc['meta']['stats']['gaps'] ) );
 check( 'missing page: the failure is recorded', ! is_wp_error( $doc ) && 3 === count( $doc['meta']['page_errors'] ) && false !== strpos( $doc['meta']['page_errors'][0], '__P2.HTM' ), is_wp_error( $doc ) ? '' : json_encode( $doc['meta']['page_errors'] ) );
 
+// Sample mode needs more than 60 pages; make a 70-page invented index and check the runs.
+$GLOBALS['opts'] = array();
+$pages = array();
+$idx_html = '<html><body><ul>';
+$n = 1;
+for ( $i = 1; $i <= 70; $i++ ) {
+	$name = '__P' . $i . '.HTM';
+	$idx_html .= '<li><a href=' . $name . '>page ' . $i . '</a></li>';
+	// Two numbered paragraphs on every page; page 1 starts at 1.
+	$pages[ $name ] = '<html><body><p>Heading ' . $i . '</p><p>' . $n . ' Paragraph number ' . $n . ' says something plain about page ' . $i . ' and its neighbours.</p><p>' . ( $n + 1 ) . ' Paragraph number ' . ( $n + 1 ) . ' adds a second thought about page ' . $i . ' and the road.</p></body></html>';
+	$n += 2;
+}
+$pages['_INDEX.HTM'] = $idx_html . '</ul></body></html>';
+$GLOBALS['hits'] = array();
+AF_Service::ingest_step( 'catechism', 0.0, true, true );
+$st = $GLOBALS['opts']['af_ing_catechism'];
+check( 'sample: five runs, 12 + 4 x 6 = 36 pages', 5 === count( $st['runs'] ) && 36 === count( $st['order'] ) && true === $st['sample'], json_encode( $st['runs'] ) );
+$r = null;
+for ( $k = 0; $k < 5 && ( null === $r || ! $r['finished'] ); $k++ ) { $r = AF_Service::ingest_step( 'catechism', 25.0 ); }
+$doc = AF_Service::get_doc( 'catechism' );
+check( 'sample: fetched only the 36 pages (plus the index)', 37 === count( $GLOBALS['hits'] ), (string) count( $GLOBALS['hits'] ) );
+check( 'sample: 72 paragraphs, marked partial, no false gaps between runs', ! is_wp_error( $doc ) && 72 === $doc['meta']['stats']['count'] && true === $doc['meta']['partial'] && array() === $doc['meta']['stats']['gaps'], is_wp_error( $doc ) ? $doc->get_error_message() : json_encode( array( $doc['meta']['stats']['count'], $doc['meta']['stats']['gaps'] ) ) );
+$s = AF_Service::status();
+$c = array_values( array_filter( $s, function ( $x ) { return 'catechism' === $x['id']; } ) )[0];
+check( 'sample: status reports partial and indexed', true === $c['partial'] && true === $c['indexed'] );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

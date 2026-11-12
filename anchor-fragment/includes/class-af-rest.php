@@ -51,6 +51,10 @@ class AF_Rest {
 						'default'           => false,
 						'sanitize_callback' => 'rest_sanitize_boolean',
 					),
+					'sample'  => array(
+						'default'           => false,
+						'sanitize_callback' => 'rest_sanitize_boolean',
+					),
 				),
 			)
 		);
@@ -110,7 +114,7 @@ class AF_Rest {
 		if ( function_exists( 'set_time_limit' ) ) {
 			@set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
 		}
-		$res = AF_Service::ingest_step( $req['doc'], 25.0, (bool) $req['restart'] );
+		$res = AF_Service::ingest_step( $req['doc'], 25.0, (bool) $req['restart'], (bool) $req['sample'] );
 		return is_wp_error( $res ) ? $res : rest_ensure_response( $res );
 	}
 
@@ -155,10 +159,11 @@ class AF_Rest {
 						<td><?php echo esc_html( $row['title'] ); ?><?php echo $row['multipage'] ? ' <em>(multi-page)</em>' : ''; ?></td>
 						<td class="af-count"><?php echo null === $row['count'] ? '–' : esc_html( $row['count'] . ( $row['gaps'] ? ', ' . $row['gaps'] . ' gap(s)' : '' ) ); ?></td>
 						<td><?php echo esc_html( null === $row['expected'] ? '' : $row['expected'] ); ?></td>
-						<td class="af-idx"><?php echo $row['indexed'] ? 'yes' : ( $row['progress'] ? esc_html( $row['progress']['done'] . ' of ' . $row['progress']['total'] . ' pages' ) : 'no' ); ?></td>
+						<td class="af-idx"><?php echo $row['indexed'] ? ( $row['partial'] ? 'sample only' : 'yes' ) : ( $row['progress'] ? esc_html( $row['progress']['done'] . ' of ' . $row['progress']['total'] . ' pages' ) : 'no' ); ?></td>
 						<td>
 							<?php if ( $row['multipage'] && current_user_can( 'manage_options' ) ) : ?>
-								<button class="button af-fetch" type="button"><?php echo $row['indexed'] ? 'Fetch again' : ( $row['progress'] ? 'Continue' : 'Fetch' ); ?></button>
+								<button class="button af-fetch" type="button"><?php echo $row['indexed'] && ! $row['partial'] ? 'Fetch again' : ( $row['progress'] ? 'Continue' : 'Fetch all' ); ?></button>
+								<button class="button af-fetch af-sample" type="button">Fetch sample (about 36 pages)</button>
 							<?php endif; ?>
 						</td>
 					</tr>
@@ -205,23 +210,25 @@ class AF_Rest {
 				btn.addEventListener('click', function () {
 					var row = btn.closest('tr');
 					var doc = row.getAttribute('data-doc');
-					var restart = /again/.test(btn.textContent);
+					var sample = btn.classList.contains('af-sample');
+					var restart = sample || /again/.test(btn.textContent);
 					var idx = row.querySelector('.af-idx');
-					btn.disabled = true;
+					Array.prototype.forEach.call(row.querySelectorAll('.af-fetch'), function (x) { x.disabled = true; });
 					function step(first) {
 						var q = new URLSearchParams({ doc: doc });
 						if (first && restart) { q.set('restart', '1'); }
+						if (sample) { q.set('sample', '1'); }
 						return fetch(cfg.ingest + '?' + q.toString(), { method: 'POST', headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' })
 							.then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
 							.then(function (res) {
-								if (!res.ok) { dmsg.textContent = 'Stopped: ' + (res.body.message || 'request failed') + ' Press the button to try again.'; btn.disabled = false; return; }
+								if (!res.ok) { dmsg.textContent = 'Stopped: ' + (res.body.message || 'request failed') + ' Press the button to try again.'; Array.prototype.forEach.call(row.querySelectorAll('.af-fetch'), function (x) { x.disabled = false; }); return; }
 								var b = res.body;
-								idx.textContent = b.finished ? 'yes' : b.done + ' of ' + b.total + ' pages';
+								idx.textContent = b.finished ? (sample ? 'sample only' : 'yes') : b.done + ' of ' + b.total + ' pages';
 								dmsg.textContent = b.message + (b.errors && b.errors.length ? ' Problems: ' + b.errors.join('; ') : '');
-								if (b.finished) { btn.disabled = false; btn.textContent = 'Fetch again'; return; }
+								if (b.finished) { Array.prototype.forEach.call(row.querySelectorAll('.af-fetch'), function (x) { x.disabled = false; }); return; }
 								return step(false);
 							})
-							.catch(function (err) { dmsg.textContent = 'Request failed (' + err + '). Press the button to carry on.'; btn.disabled = false; });
+							.catch(function (err) { dmsg.textContent = 'Request failed (' + err + '). Press the button to carry on.'; Array.prototype.forEach.call(row.querySelectorAll('.af-fetch'), function (x) { x.disabled = false; }); });
 					}
 					dmsg.textContent = 'Starting…';
 					step(true);

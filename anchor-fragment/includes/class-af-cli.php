@@ -127,13 +127,16 @@ class AF_CLI {
 	 * [--restart]
 	 * : Throw away partial progress and start again.
 	 *
+	 * [--sample]
+	 * : Fetch only about 36 pages (five runs) to try the parser.
+	 *
 	 * @param array $args       Positional arguments.
 	 * @param array $assoc_args Flags.
 	 */
 	public function ingest( $args, $assoc_args ) {
 		$restart = isset( $assoc_args['restart'] );
 		do {
-			$res = AF_Service::ingest_step( $args[0], 50.0, $restart );
+			$res = AF_Service::ingest_step( $args[0], 50.0, $restart, isset( $assoc_args['sample'] ) );
 			$restart = false;
 			if ( is_wp_error( $res ) ) {
 				WP_CLI::error( $res->get_error_message() );
