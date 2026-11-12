@@ -61,6 +61,56 @@
 			"scheme": "paragraph",
 			"expected_count": 93,
 			"url": "https://www.vatican.va/archive/hist_councils/ii_vatican_council/documents/vat-ii_const_19651207_gaudium-et-spes_en.html"
+		},
+		{
+			"id": "nostra-aetate",
+			"title": "Nostra aetate",
+			"short": "NA",
+			"aliases": ["nostra aetate","declaration on the relation of the church to non-christian religions"],
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 5,
+			"url": "https://www.vatican.va/archive/hist_councils/ii_vatican_council/documents/vat-ii_decl_19651028_nostra-aetate_en.html"
+		},
+		{
+			"id": "dei-verbum",
+			"title": "Dei verbum",
+			"short": "DV",
+			"aliases": ["dei verbum","dogmatic constitution on divine revelation"],
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 26,
+			"url": "https://www.vatican.va/archive/hist_councils/ii_vatican_council/documents/vat-ii_const_19651118_dei-verbum_en.html"
+		},
+		{
+			"id": "dignitatis-humanae",
+			"title": "Dignitatis humanae",
+			"short": "DH",
+			"aliases": ["dignitatis humanae","declaration on religious freedom"],
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 15,
+			"url": "https://www.vatican.va/archive/hist_councils/ii_vatican_council/documents/vat-ii_decl_19651207_dignitatis-humanae_en.html"
+		},
+		{
+			"id": "unitatis-redintegratio",
+			"title": "Unitatis redintegratio",
+			"short": "UR",
+			"aliases": ["unitatis redintegratio","decree on ecumenism"],
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 24,
+			"url": "https://www.vatican.va/archive/hist_councils/ii_vatican_council/documents/vat-ii_decree_19641121_unitatis-redintegratio_en.html"
+		},
+		{
+			"id": "dilexi-te",
+			"title": "Dilexi te",
+			"short": "DT",
+			"aliases": ["dilexi te","i have loved you"],
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 121,
+			"url": "https://www.vatican.va/content/leo-xiv/en/apost_exhortations/documents/20251004-dilexi-te.html"
 		}
 	]
 }
