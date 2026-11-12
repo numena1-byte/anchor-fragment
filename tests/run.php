@@ -126,5 +126,15 @@ $capped = AF_Parser::parse( $fn, 2 );
 check( 'max locator: footnote numbers are not taken as paragraphs', 2 === $capped['stats']['count'], json_encode( $capped['stats'] ) );
 check( 'max locator: not set, they are', 4 === AF_Parser::parse( $fn )['stats']['count'] );
 
+// A heading printed as an ordinary paragraph belongs to what follows, not to the paragraph before it.
+$hd = '<html><body><p>1. First article about apples and pears, and more words here.</p><p>D) Norms for adapting the Liturgy to the culture of peoples</p>'
+	. '<p>2. Second article about oranges and plums.</p><p>A sentence that continues the second article.</p></body></html>';
+$h = AF_Parser::parse( $hd );
+check( 'heading before next article is not part of the previous one', false === strpos( $h['paragraphs']['1']['full'], 'Norms' ), $h['paragraphs']['1']['full'] );
+check( 'a normal continuation is kept', false !== strpos( $h['paragraphs']['2']['full'], 'continues' ) );
+$ls = '<html><body><p>1. First article about apples:</p><p>a) the first thing;</p><p>b) the last thing</p><p>2. Second article about plums and figs.</p></body></html>';
+$l = AF_Parser::parse( $ls );
+check( 'list items stay with their article', false !== strpos( $l['paragraphs']['1']['full'], 'last thing' ), $l['paragraphs']['1']['full'] );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

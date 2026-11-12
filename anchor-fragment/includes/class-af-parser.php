@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'AF_TEST' ) ) {
 class AF_Parser {
 
 	/** Bump when parsing rules change, so cached results are rebuilt. */
-	const VERSION = 4; // 4: optional max locator; 3: documents also build the hashed word-run index used for matching.
+	const VERSION = 5; // 5: headings printed as paragraphs leave the previous one; 4: optional max locator; 3: documents also build the hashed word-run index used for matching.
 
 	/** Largest forward jump in numbering still accepted (it is reported as a gap). */
 	const MAX_SKIP = 5;
@@ -65,6 +65,15 @@ class AF_Parser {
 			}
 		}
 		return mb_strtolower( $s, 'UTF-8' );
+	}
+
+	/** A short line with no sentence-ending punctuation, e.g. "D) Norms for adapting the Liturgy to the culture of peoples". */
+	private static function looks_like_heading( $text ) {
+		if ( preg_match( '/^\(?(?:[a-z]|\d{1,2}|[ivx]+)[).]\s/u', $text ) ) {
+			return false; // A list item such as "b) ..." or "(2) ...".
+		}
+		return str_word_count( $text ) <= 15
+			&& ! preg_match( '/[.;:,?!)\]"\x{201D}\x{2019}]\s*$/u', $text );
 	}
 
 	/**
@@ -127,6 +136,13 @@ class AF_Parser {
 			if ( 'p' === $b['tag'] && preg_match( '/^(\d{1,4})\.(?:\s+|(?=[^\d\s]))/u', $b['text'], $m ) ) {
 				$n = (int) $m[1];
 				if ( $n > $last && $n <= $last + self::MAX_SKIP && ( ! $max_locator || $n <= $max_locator ) ) {
+					// Some pages mark section headings as plain paragraphs. Short lines with no closing
+					// punctuation that sit directly before the next numbered paragraph belong to it, not the last one.
+					if ( null !== $cur ) {
+						while ( count( $paras[ $cur ]['blocks'] ) > 1 && self::looks_like_heading( $blocks[ end( $paras[ $cur ]['blocks'] ) ]['text'] ) ) {
+							array_pop( $paras[ $cur ]['blocks'] );
+						}
+					}
 					$key           = (string) $n;
 					$paras[ $key ] = array(
 						'n'        => $n,
