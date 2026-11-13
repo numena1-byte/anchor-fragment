@@ -131,7 +131,7 @@
 				"page_pattern": "__P[0-9A-Za-z]+\\.HTM",
 				"window": 40
 			},
-			"parse": { "bare_numbers": true, "strip_sup": true, "repair": false }
+			"parse": { "bare_numbers": true, "strip_sup": true, "repair": false, "split_inline": true }
 		}
 	]
 }

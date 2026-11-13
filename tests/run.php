@@ -155,5 +155,16 @@ $far = AF_Parser::parse( '<html><body><p>1992 was the year of a famous event.</p
 check( 'bare numbers: a year at the top of a page is out of the window', array( '27' ) === array_map( 'strval', array_keys( $far['paragraphs'] ) ), json_encode( array_keys( $far['paragraphs'] ) ) );
 check( 'bare numbers: first paragraph of a page outside the window is refused', 0 === AF_Parser::parse( '<html><body><p>40 Too far from 26.</p></body></html>', 2865, $o )['stats']['count'] );
 
+// Two paragraphs in one block: the second number sits mid-text (Catechism 2077, 2436).
+$si = '<html><body><p>2075 First paragraph here.</p><p>2076 By his life Jesus attested to the Decalogue. 2077 The</p><p>gift of the Decalogue is bestowed from within the covenant.</p><p>2078 Third paragraph.</p></body></html>';
+$so = array( 'bare_numbers' => true, 'repair' => false, 'after' => 2074, 'window' => 5, 'split_inline' => true );
+$sp = AF_Parser::parse( $si, 2865, $so );
+check( 'split inline: 2077 found, no gap', array( '2075', '2076', '2077', '2078' ) === array_map( 'strval', array_keys( $sp['paragraphs'] ) ) && array() === $sp['stats']['gaps'], json_encode( array_keys( $sp['paragraphs'] ) ) );
+check( 'split inline: 2076 ends at the sentence, 2077 keeps its continuation', false === strpos( $sp['paragraphs']['2076']['full'], '2077' ) && 0 === strpos( $sp['paragraphs']['2077']['first'], 'The' ) && false !== strpos( $sp['paragraphs']['2077']['full'], 'covenant' ), json_encode( $sp['paragraphs'] ) );
+$sn = AF_Parser::parse( '<html><body><p>2075 In 1992 the Church said so. 1993 was another year.</p><p>2076 Next.</p></body></html>', 2865, $so );
+check( 'split inline: a number that is not the next one is left alone', array( '2075', '2076' ) === array_map( 'strval', array_keys( $sn['paragraphs'] ) ), json_encode( array_keys( $sn['paragraphs'] ) ) );
+$sd = AF_Parser::parse( $si, 2865, array( 'bare_numbers' => true, 'repair' => false, 'after' => 2074, 'window' => 5 ) );
+check( 'split inline: off by default', ! isset( $sd['paragraphs']['2077'] ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'AF_TEST' ) ) {
 class AF_Parser {
 
 	/** Bump when parsing rules change, so cached results are rebuilt. */
-	const VERSION = 6; // 6: options for pages that print bare numbers, inline footnote marks or only part of a document; 5: headings printed as paragraphs leave the previous one; 4: optional max locator; 3: documents also build the hashed word-run index used for matching.
+	const VERSION = 6; // 6 (split_inline added later, opt-in, no bump): a block holding two paragraphs is split at the next number; 6: options for pages that print bare numbers, inline footnote marks or only part of a document; 5: headings printed as paragraphs leave the previous one; 4: optional max locator; 3: documents also build the hashed word-run index used for matching.
 
 	/** Largest forward jump in numbering still accepted (it is reported as a gap). */
 	const MAX_SKIP = 5;
@@ -84,6 +84,8 @@ class AF_Parser {
 	 *   after:        the page is part of a longer document and this is the last number on the page before it;
 	 *   repair:       false switches off the repair of single missing numbers (default true);
 	 *   window:       how far past that the first number on this page may jump (default MAX_SKIP).
+	 *   split_inline: a block may hold two paragraphs, the second starting mid-text ("... validity. 2077 The gift ...").
+	 *                 The block is split where exactly the next number follows a sentence end and precedes a capital.
 	 * }
 	 * @param int    $max_locator If set, numbers above this are never taken as paragraphs (some pages print footnotes as numbered paragraphs that continue the sequence).
 	 * @return array {
@@ -150,10 +152,30 @@ class AF_Parser {
 		$rej_blocks = array();
 		$last       = $from;
 		$cur        = null;
-		foreach ( $blocks as $i => $b ) {
+		$split = ! empty( $opts['split_inline'] );
+		for ( $i = 0; $i < count( $blocks ); $i++ ) {
+			$b = $blocks[ $i ];
 			if ( preg_match( '/^h[1-6]$/', $b['tag'] ) || $b['note'] ) {
 				$cur = null; // Headings and footnotes end the current paragraph.
 				continue;
+			}
+			if ( $split && 'p' === $b['tag'] ) {
+				// Look for the number that would come next, in the middle of this block.
+				$exp  = $last + 1;
+				$from_off = 1;
+				if ( preg_match( $start, $b['text'], $sm ) && (int) $sm[1] === $exp ) {
+					$exp     = $exp + 1;
+					$from_off = strlen( $sm[0] );
+				}
+				if ( ( ! $max_locator || $exp <= $max_locator )
+					&& preg_match( '/[.!?\]"\x{201D}\x{2019}\)]\s+(' . $exp . ')\s+(?=[A-Z"\x{201C}\x{2018}])/u', substr( $b['text'], $from_off ), $im, PREG_OFFSET_CAPTURE ) ) {
+					$cut  = $from_off + $im[1][1];
+					$head = rtrim( substr( $b['text'], 0, $cut ) );
+					$tail = substr( $b['text'], $cut );
+					$blocks[ $i ]['text'] = $head;
+					$b['text']            = $head;
+					array_splice( $blocks, $i + 1, 0, array( array( 'tag' => 'p', 'text' => $tail, 'note' => false ) ) );
+				}
 			}
 			if ( 'p' === $b['tag'] && preg_match( $start, $b['text'], $m ) ) {
 				$n = (int) $m[1];
