@@ -147,5 +147,19 @@ check( '14b Catechism indexed -> high, paragraph 2415, typed cite agrees', 'high
 $yr  = $an2->analyze( '<p>The Catechism (1992) says:</p><blockquote>' . $qtext . '</blockquote>', array(), function ( $id ) use ( $get, $icc ) { return 'catechism' === $id ? $icc : $get( $id ); } );
 check( '14c a year next to the title is not a cite', empty( $yr['quotes'][0]['typed'] ) || 1992 !== $yr['quotes'][0]['typed'][0]['loc'][0], json_encode( $yr['quotes'][0]['typed'] ) );
 
+// 15. "#N" beside the quotation, the document named around the previous quotation (a Catechism-style post).
+$p15 = '<blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body. The people who bake together also remember together.</blockquote>'
+	. '<p>This is followed by the reference to article 3 of the Test Document.</p>'
+	. '<p>Actually, #4 says:</p>'
+	. '<blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.</blockquote>';
+$q = run1( $an, $get, $p15 );
+check( '15 "#4 says" after a post that named the document -> typed TD 4 (agrees with text: high)', 2 === count( $q ) && 'high' === $q[1]['status'] && 'test-document' === $q[1]['typed'][0]['doc'], json_encode( array_column( $q, 'status' ) ) . ' ' . json_encode( $q[1]['typed'] ?? null ) );
+$q = run1( $an, $get, '<p>Issue #4 of the newsletter said:</p><blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.</blockquote>' );
+check( '15b "#4" with no document named anywhere -> not a cite, no conflict', 'conflict' !== $q[0]['status'] && empty( $q[0]['typed'] ), json_encode( $q ) );
+$q = run1( $an, $get, '<p>The Test Document says, see #3 for details:</p><blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.</blockquote>' );
+check( '15c "#3" disagrees with the text (paragraph 4) -> conflict', 'conflict' === $q[0]['status'], json_encode( $q ) );
+$q = run1( $an, $get, '<p>As Test Document #4 puts it:</p><blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.</blockquote>' );
+check( '15d "Test Document #4" -> high', 'high' === $q[0]['status'], json_encode( $q ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

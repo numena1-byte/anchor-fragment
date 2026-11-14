@@ -97,6 +97,7 @@ class AF_Analyzer {
 
 		$results = array();
 		$carry   = null; // The document most recently cited by number, for bare "(74)" style cites.
+		$near    = null; // The one document named around the previous quotation, for "#892" style cites.
 		$n       = 0;
 		foreach ( $this->extract( $html ) as $q ) {
 			$n++;
@@ -143,11 +144,29 @@ class AF_Analyzer {
 				}
 				$typed[] = array( 'doc' => $doc, 'loc' => $loc );
 			}
+			// "#892" or "no. 892" beside the quotation, with no document named there: the document comes from an
+			// earlier cite, or the one named here, or the one named around the previous quotation. The number
+			// still has to agree with the text before it counts.
+			$tail = mb_substr( $q['lead'], -100 );
+			$head = mb_substr( $q['after'], 0, 100 );
+			foreach ( $this->marked_cites( $q['cite'] . ' ' . $tail . ' ' . $head ) as $loc ) {
+				$doc = $carry;
+				if ( null === $doc && 1 === count( $hints ) ) {
+					$doc = $hints[0];
+				}
+				if ( null === $doc ) {
+					$doc = $near;
+				}
+				if ( null !== $doc && $loc[0] <= $this->docs[ $doc ]['max'] ) {
+					$typed[] = array( 'doc' => $doc, 'loc' => $loc );
+				}
+			}
 			foreach ( $typed as $t ) {
 				if ( null !== $t['doc'] ) {
 					$carry = $t['doc'];
 				}
 			}
+			$near = 1 === count( $hints ) ? $hints[0] : ( 1 === count( $hint_text ) ? $hint_text[0] : null );
 
 			// Score against every document.
 			$scores = array();
@@ -332,7 +351,7 @@ class AF_Analyzer {
 	private function cites( $text ) {
 		$lite  = self::lite( $text );
 		$plain = self::straight( $text );
-		$num   = '(?:\s*[,.:]?\s*(?:nn?\.|nos?\.|no|n|\x{00A7}+|paras?\.?|paragraphs?)?\s*)(\d{1,4})(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,4})(?!\d))?';
+		$num   = '(?:\s*[,.:]?\s*(?:nn?\.|nos?\.|no|n|\x{00A7}+|#|paras?\.?|paragraphs?)?\s*)(\d{1,4})(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,4})(?!\d))?';
 		$out   = array();
 		$docs  = $this->docs;
 		$add   = function ( $doc, $m ) use ( &$out, $docs ) {
@@ -359,6 +378,23 @@ class AF_Analyzer {
 			}
 		}
 		return array_values( $out );
+	}
+
+	/**
+	 * Numbers marked with "#" or "no.", "para.", "article" and no document name: "#892", "article 892".
+	 *
+	 * @return array[] each a list of numbers
+	 */
+	private function marked_cites( $text ) {
+		$out = array();
+		if ( preg_match_all( '/(?<![\w&])(?:#|(?:nn?|nos?|paras?|paragraphs?|articles?)\.?\s+)\s*(\d{1,4})(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,4})(?!\d))?/ui', $text, $ms, PREG_SET_ORDER ) ) {
+			foreach ( $ms as $m ) {
+				$a     = (int) $m[1];
+				$b     = isset( $m[2] ) && '' !== $m[2] ? (int) $m[2] : 0;
+				$out[] = ( $b > $a && $b - $a <= 12 ) ? range( $a, $b ) : array( $a );
+			}
+		}
+		return $out;
 	}
 
 	/**
