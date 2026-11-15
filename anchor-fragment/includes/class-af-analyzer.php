@@ -150,7 +150,10 @@ class AF_Analyzer {
 			// agree with the text before it counts.
 			$tail = mb_substr( $q['lead'], -100 );
 			$head = mb_substr( $q['after'], 0, 100 );
-			foreach ( $this->marked_cites( $q['cite'] . ' ' . $tail . ' ' . $head ) as $mc ) {
+			// Each stretch of text is read on its own, so that a sentence cannot run from the text before the
+			// quotation into the text after it.
+			$marked = array_merge( $this->marked_cites( $q['cite'] ), $this->marked_cites( $tail ), $this->marked_cites( $head ) );
+			foreach ( $marked as $mc ) {
 				$doc = $mc['doc']; // Set when the cite names its document in the same sentence.
 				if ( null === $doc ) {
 					$doc = $carry;
