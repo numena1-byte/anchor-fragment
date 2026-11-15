@@ -167,5 +167,10 @@ check( '15e "Article 11 states" -> not read as a cite of the Test Document', ! a
 $q = run1( $an, $get, '<p>The reference is to article 4 of the Test Document, which says:</p><blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.</blockquote>' );
 check( '15f "article 4 of the Test Document" in the lead-in -> typed TD 4', ! empty( $q[0]['typed'] ) && array( 4 ) === $q[0]['typed'][0]['loc'] && 'test-document' === $q[0]['typed'][0]['doc'], json_encode( $q[0]['typed'] ) );
 
+// 15g. The real case: "Article 11 states:" before the quotation, "article 4 of the Test Document" after it.
+$q = run1( $an, $get, '<p>The signer adheres to some 11 statements. Article 11 states:</p><blockquote>Mountain bells ring differently in thin air, and the shepherds learned to read the weather from the length of each note.</blockquote><p>This is followed by the reference to article 4 of the Test Document.</p>' );
+$locs = array_map( function ( $t ) { return $t['loc'][0]; }, $q[0]['typed'] );
+check( '15g text before and after the quotation are read separately -> typed 4 only, not 11', array( 4 ) === $locs, json_encode( $q[0]['typed'] ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );
