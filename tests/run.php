@@ -136,5 +136,35 @@ $ls = '<html><body><p>1. First article about apples:</p><p>a) the first thing;</
 $l = AF_Parser::parse( $ls );
 check( 'list items stay with their article', false !== strpos( $l['paragraphs']['1']['full'], 'last thing' ), $l['paragraphs']['1']['full'] );
 
+// Catechism-style page: bare numbers, footnote marks inside the text, page starts mid-document.
+$cc = '<html><body><p>CHAPTER ONE</p><p>I. The Desire for God</p>'
+	. '<p>27 The desire for God is written in the human heart.<sup><a name="-K" href="#$K">1</a></sup> It calls us home.</p>'
+	. '<p>A quotation continuing paragraph 27.</p>'
+	. '<p>28 In many ways, throughout history, men have given expression to their quest.</p>'
+	. '<p>1992 was the year of a famous event that is mentioned later.</p>'
+	. '<p>30 Let the hearts of those who seek the Lord rejoice.<sup><a href="#$O">5</a></sup> Although man can forget.</p></body></html>';
+$o  = array( 'bare_numbers' => true, 'strip_sup' => true, 'after' => 26, 'window' => 5, 'repair' => false );
+$c  = AF_Parser::parse( $cc, 2865, $o );
+check( 'bare numbers: 27, 28 and 30 found', array( '27', '28', '30' ) === array_map( 'strval', array_keys( $c['paragraphs'] ) ), json_encode( array_keys( $c['paragraphs'] ) ) );
+check( 'bare numbers: footnote mark becomes [1], not glued to the word', false === strpos( $c['paragraphs']['27']['full'], 'heart.1' ) && false !== strpos( $c['paragraphs']['27']['full'], 'human heart. [1] It calls' ), $c['paragraphs']['27']['full'] );
+$fr = AF_Fragment::build( 'The desire for God is written in the human heart. [1] It calls us home.', AF_Parser::fold( 'xx' ), '27 ' );
+check( 'fragment stops before the footnote mark', null === $fr['frag'] || false === strpos( urldecode( $fr['frag'] ), '[1]' ), json_encode( $fr ) );
+check( 'bare numbers: continuation paragraph kept', false !== strpos( $c['paragraphs']['27']['full'], 'continuing paragraph 27' ) );
+check( 'bare numbers: a year inside the page is not a paragraph', ! isset( $c['paragraphs']['1992'] ) && array( 29 ) === $c['stats']['gaps'], json_encode( $c['stats']['gaps'] ) );
+$far = AF_Parser::parse( '<html><body><p>1992 was the year of a famous event.</p><p>27 The desire for God is written in the heart.</p></body></html>', 2865, $o );
+check( 'bare numbers: a year at the top of a page is out of the window', array( '27' ) === array_map( 'strval', array_keys( $far['paragraphs'] ) ), json_encode( array_keys( $far['paragraphs'] ) ) );
+check( 'bare numbers: first paragraph of a page outside the window is refused', 0 === AF_Parser::parse( '<html><body><p>40 Too far from 26.</p></body></html>', 2865, $o )['stats']['count'] );
+
+// Two paragraphs in one block: the second number sits mid-text (Catechism 2077, 2436).
+$si = '<html><body><p>2075 First paragraph here.</p><p>2076 By his life Jesus attested to the Decalogue. 2077 The</p><p>gift of the Decalogue is bestowed from within the covenant.</p><p>2078 Third paragraph.</p></body></html>';
+$so = array( 'bare_numbers' => true, 'repair' => false, 'after' => 2074, 'window' => 5, 'split_inline' => true );
+$sp = AF_Parser::parse( $si, 2865, $so );
+check( 'split inline: 2077 found, no gap', array( '2075', '2076', '2077', '2078' ) === array_map( 'strval', array_keys( $sp['paragraphs'] ) ) && array() === $sp['stats']['gaps'], json_encode( array_keys( $sp['paragraphs'] ) ) );
+check( 'split inline: 2076 ends at the sentence, 2077 keeps its continuation', false === strpos( $sp['paragraphs']['2076']['full'], '2077' ) && 0 === strpos( $sp['paragraphs']['2077']['first'], 'The' ) && false !== strpos( $sp['paragraphs']['2077']['full'], 'covenant' ), json_encode( $sp['paragraphs'] ) );
+$sn = AF_Parser::parse( '<html><body><p>2075 In 1992 the Church said so. 1993 was another year.</p><p>2076 Next.</p></body></html>', 2865, $so );
+check( 'split inline: a number that is not the next one is left alone', array( '2075', '2076' ) === array_map( 'strval', array_keys( $sn['paragraphs'] ) ), json_encode( array_keys( $sn['paragraphs'] ) ) );
+$sd = AF_Parser::parse( $si, 2865, array( 'bare_numbers' => true, 'repair' => false, 'after' => 2074, 'window' => 5 ) );
+check( 'split inline: off by default', ! isset( $sd['paragraphs']['2077'] ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

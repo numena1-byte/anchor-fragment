@@ -121,5 +121,51 @@ check( '12 a year next to the title is not a cite -> medium, not conflict', 'med
 $all = $an->analyze( '<blockquote>Patience is the first tool.</blockquote><blockquote>The committee reconvened after lunch to discuss the quarterly budget projections and the allocation of resources to regional offices.</blockquote>', array(), $get );
 check( '13 summary counts by status', array( 'too_short' => 1, 'no_match' => 1 ) === $all['summary'], json_encode( $all['summary'] ) );
 
+// 14. A document with four-digit paragraph numbers (the Catechism).
+$cc_texts = array(
+	2413 => 'Divine providence is also exercised through human work, which the Creator entrusted to every person as a share in the shaping of the world around them.',
+	2414 => 'The seventh commandment forbids acts or enterprises that for any reason lead to the enslavement of human beings, and to their being bought, sold and exchanged like merchandise.',
+	2415 => 'The seventh commandment enjoins respect for the integrity of creation, and animals like plants and inanimate beings are by nature destined for the common good of past, present and future humanity.',
+);
+$cc_html = '<html><body>';
+foreach ( $cc_texts as $n => $txt ) {
+	$cc_html .= '<p>' . $n . ' ' . $txt . '<sup><a href="#$K">1</a></sup></p>';
+}
+$ccp = AF_Parser::parse( $cc_html . '</body></html>', 2865, array( 'bare_numbers' => true, 'strip_sup' => true, 'after' => 2412, 'window' => 5, 'repair' => false ) );
+check( '14 four-digit paragraphs parsed', 3 === $ccp['stats']['count'] && 2415 === $ccp['stats']['max'], json_encode( $ccp['stats'] ) );
+$icc  = AF_Matcher::build_index( $ccp['paragraphs'] );
+$reg2 = $registry + array(
+	'catechism' => array( 'id' => 'catechism', 'title' => 'Catechism of the Catholic Church', 'short' => 'CCC', 'aliases' => array( 'catechism', 'ccc' ), 'expected_count' => 2865, 'url' => 'https://www.vatican.va/archive/ENG0015/_INDEX.HTM' ),
+);
+$qtext = 'The seventh commandment enjoins respect for the integrity of creation, and animals like plants and inanimate beings are by nature destined for the common good of past, present and future humanity.';
+$an2   = new AF_Analyzer( $reg2 );
+$no    = $an2->analyze( '<p>See the Catechism 2415.</p><blockquote>' . $qtext . '</blockquote>', array(), function ( $id ) use ( $get ) { return 'catechism' === $id ? null : $get( $id ); } );
+check( '14a Catechism not indexed yet -> out_of_scope', 'out_of_scope' === $no['quotes'][0]['status'], json_encode( $no['quotes'] ) );
+$yes = $an2->analyze( '<p>See the Catechism 2415.</p><blockquote>' . $qtext . '</blockquote>', array(), function ( $id ) use ( $get, $icc ) { return 'catechism' === $id ? $icc : $get( $id ); } );
+$q   = $yes['quotes'][0];
+check( '14b Catechism indexed -> high, paragraph 2415, typed cite agrees', 'high' === $q['status'] && 'catechism' === $q['best']['doc'] && array( 2415 ) === $q['best']['locators'] && array( 2415 ) === $q['typed'][0]['loc'], json_encode( $q ) );
+$yr  = $an2->analyze( '<p>The Catechism (1992) says:</p><blockquote>' . $qtext . '</blockquote>', array(), function ( $id ) use ( $get, $icc ) { return 'catechism' === $id ? $icc : $get( $id ); } );
+check( '14c a year next to the title is not a cite', empty( $yr['quotes'][0]['typed'] ) || 1992 !== $yr['quotes'][0]['typed'][0]['loc'][0], json_encode( $yr['quotes'][0]['typed'] ) );
+
+// 15. "#N" beside the quotation, the document named around the previous quotation (a Catechism-style post).
+$p15 = '<blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body. The people who bake together also remember together.</blockquote>'
+	. '<p>This is followed by the reference to article 3 of the Test Document.</p>'
+	. '<p>Actually, #4 says:</p>'
+	. '<blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.</blockquote>';
+$q = run1( $an, $get, $p15 );
+check( '15 "#4 says" after a post that named the document -> typed TD 4 (agrees with text: high)', 2 === count( $q ) && 'high' === $q[1]['status'] && 'test-document' === $q[1]['typed'][0]['doc'], json_encode( array_column( $q, 'status' ) ) . ' ' . json_encode( $q[1]['typed'] ?? null ) );
+$q = run1( $an, $get, '<p>Issue #4 of the newsletter said:</p><blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.</blockquote>' );
+check( '15b "#4" with no document named anywhere -> not a cite, no conflict', 'conflict' !== $q[0]['status'] && empty( $q[0]['typed'] ), json_encode( $q ) );
+$q = run1( $an, $get, '<p>The Test Document says, see #3 for details:</p><blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.</blockquote>' );
+check( '15c "#3" disagrees with the text (paragraph 4) -> conflict', 'conflict' === $q[0]['status'], json_encode( $q ) );
+$q = run1( $an, $get, '<p>As Test Document #4 puts it:</p><blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.</blockquote>' );
+check( '15d "Test Document #4" -> high', 'high' === $q[0]['status'], json_encode( $q ) );
+
+// 15e. "Article 11 states" with no document in the sentence is not a cite; "article 3 of the Test Document" is.
+$q = run1( $an, $get, '<p>As the Test Document puts it.</p><p>Article 11 states:</p><blockquote>Mountain bells ring differently in thin air, and the shepherds learned to read the weather from the length of each note.</blockquote>' );
+check( '15e "Article 11 states" -> not read as a cite of the Test Document', ! array_filter( $q[0]['typed'], function ( $t ) { return array( 11 ) === $t['loc']; } ), json_encode( $q[0]['typed'] ) );
+$q = run1( $an, $get, '<p>The reference is to article 4 of the Test Document, which says:</p><blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.</blockquote>' );
+check( '15f "article 4 of the Test Document" in the lead-in -> typed TD 4', ! empty( $q[0]['typed'] ) && array( 4 ) === $q[0]['typed'][0]['loc'] && 'test-document' === $q[0]['typed'][0]['doc'], json_encode( $q[0]['typed'] ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );
