@@ -145,20 +145,24 @@ class AF_Analyzer {
 				$typed[] = array( 'doc' => $doc, 'loc' => $loc );
 			}
 			// "#892" or "no. 892" beside the quotation, with no document named there: the document comes from an
-			// earlier cite, or the one named here, or the one named around the previous quotation. The number
-			// still has to agree with the text before it counts.
+			// earlier cite, or the one named here, or the one named around the previous quotation. "article 892"
+			// and "para. 892" count only with a document named in the same sentence. The number still has to
+			// agree with the text before it counts.
 			$tail = mb_substr( $q['lead'], -100 );
 			$head = mb_substr( $q['after'], 0, 100 );
-			foreach ( $this->marked_cites( $q['cite'] . ' ' . $tail . ' ' . $head ) as $loc ) {
-				$doc = $carry;
+			foreach ( $this->marked_cites( $q['cite'] . ' ' . $tail . ' ' . $head ) as $mc ) {
+				$doc = $mc['doc']; // Set when the cite names its document in the same sentence.
+				if ( null === $doc ) {
+					$doc = $carry;
+				}
 				if ( null === $doc && 1 === count( $hints ) ) {
 					$doc = $hints[0];
 				}
 				if ( null === $doc ) {
 					$doc = $near;
 				}
-				if ( null !== $doc && $loc[0] <= $this->docs[ $doc ]['max'] ) {
-					$typed[] = array( 'doc' => $doc, 'loc' => $loc );
+				if ( null !== $doc && $mc['loc'][0] <= $this->docs[ $doc ]['max'] ) {
+					$typed[] = array( 'doc' => $doc, 'loc' => $mc['loc'] );
 				}
 			}
 			foreach ( $typed as $t ) {
@@ -381,18 +385,45 @@ class AF_Analyzer {
 	}
 
 	/**
-	 * Numbers marked with "#" or "no.", "para.", "article" and no document name: "#892", "article 892".
+	 * Numbers marked with "#" or "no." ("#892", "no. 892"), which take their document from nearby text, and
+	 * with "article" or "para." ("article 892 of the Catechism"), which count only when exactly one document
+	 * is named in the same sentence.
 	 *
-	 * @return array[] each a list of numbers
+	 * @return array[] each { loc[], doc|null }
 	 */
 	private function marked_cites( $text ) {
 		$out = array();
-		if ( preg_match_all( '/(?<![\w&])(?:#|(?:nn?|nos?|paras?|paragraphs?|articles?)\.?\s+)\s*(\d{1,4})(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,4})(?!\d))?/ui', $text, $ms, PREG_SET_ORDER ) ) {
-			foreach ( $ms as $m ) {
-				$a     = (int) $m[1];
-				$b     = isset( $m[2] ) && '' !== $m[2] ? (int) $m[2] : 0;
-				$out[] = ( $b > $a && $b - $a <= 12 ) ? range( $a, $b ) : array( $a );
+		$re  = '/(?<![\w&])(?:(#|nn?\.?|nos?\.?)|(paras?\.?|paragraphs?|articles?))\s*(\d{1,4})(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,4})(?!\d))?/ui';
+		if ( ! preg_match_all( $re, $text, $ms, PREG_SET_ORDER | PREG_OFFSET_CAPTURE ) ) {
+			return $out;
+		}
+		$sentences = preg_split( '/(?<=[.!?])\s+(?=[A-Z"\x{201C}])/u', $text, -1, PREG_SPLIT_OFFSET_CAPTURE );
+		foreach ( $ms as $m ) {
+			$marker = $m[1][0];
+			$word   = $m[2][0];
+			// "n" and "no" need their full stop or a "#": a bare "no 5" is ordinary text.
+			if ( '' !== $marker && '#' !== $marker && false === strpos( $marker, '.' ) && ! preg_match( '/^nos?$/i', $marker ) ) {
+				continue;
 			}
+			$a   = (int) $m[3][0];
+			$b   = isset( $m[4] ) && '' !== $m[4][0] ? (int) $m[4][0] : 0;
+			$loc = ( $b > $a && $b - $a <= 12 ) ? range( $a, $b ) : array( $a );
+			$doc = null;
+			if ( '' !== $word ) {
+				$off  = $m[0][1];
+				$sent = $text;
+				foreach ( $sentences as $s ) {
+					if ( $off >= $s[1] && $off < $s[1] + strlen( $s[0] ) + 1 ) {
+						$sent = $s[0];
+					}
+				}
+				$named = $this->docs_in( $sent );
+				if ( 1 !== count( $named ) ) {
+					continue; // No document in the sentence: "Article 11 states" may be about anything.
+				}
+				$doc = $named[0];
+			}
+			$out[] = array( 'loc' => $loc, 'doc' => $doc );
 		}
 		return $out;
 	}

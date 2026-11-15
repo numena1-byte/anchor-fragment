@@ -161,5 +161,11 @@ check( '15c "#3" disagrees with the text (paragraph 4) -> conflict', 'conflict' 
 $q = run1( $an, $get, '<p>As Test Document #4 puts it:</p><blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.</blockquote>' );
 check( '15d "Test Document #4" -> high', 'high' === $q[0]['status'], json_encode( $q ) );
 
+// 15e. "Article 11 states" with no document in the sentence is not a cite; "article 3 of the Test Document" is.
+$q = run1( $an, $get, '<p>As the Test Document puts it.</p><p>Article 11 states:</p><blockquote>Mountain bells ring differently in thin air, and the shepherds learned to read the weather from the length of each note.</blockquote>' );
+check( '15e "Article 11 states" -> not read as a cite of the Test Document', ! array_filter( $q[0]['typed'], function ( $t ) { return array( 11 ) === $t['loc']; } ), json_encode( $q[0]['typed'] ) );
+$q = run1( $an, $get, '<p>The reference is to article 4 of the Test Document, which says:</p><blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.</blockquote>' );
+check( '15f "article 4 of the Test Document" in the lead-in -> typed TD 4', ! empty( $q[0]['typed'] ) && array( 4 ) === $q[0]['typed'][0]['loc'] && 'test-document' === $q[0]['typed'][0]['doc'], json_encode( $q[0]['typed'] ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );
