@@ -142,7 +142,7 @@ class AF_Analyzer {
 				if ( null === $doc && 1 === count( $hints ) ) {
 					$doc = $hints[0];
 				}
-				$typed[] = array( 'doc' => $doc, 'loc' => $loc );
+				$typed[] = array( 'doc' => $doc, 'loc' => $loc, 'soft' => true );
 			}
 			// "#892" or "no. 892" beside the quotation, with no document named there: the document comes from an
 			// earlier cite, or the one named here, or the one named around the previous quotation. "article 892"
@@ -169,7 +169,7 @@ class AF_Analyzer {
 				}
 			}
 			foreach ( $typed as $t ) {
-				if ( null !== $t['doc'] ) {
+				if ( null !== $t['doc'] && empty( $t['soft'] ) ) {
 					$carry = $t['doc'];
 				}
 			}
@@ -225,6 +225,20 @@ class AF_Analyzer {
 					}
 				}
 			}
+
+			// A bare number in brackets, "(84)", takes its document from an earlier cite, which is only a guess. It counts when
+			// the text agrees with it. When the text points elsewhere it is dropped, not reported as a conflict.
+			$typed = array_values(
+				array_filter(
+					$typed,
+					function ( $t ) use ( $best ) {
+						if ( empty( $t['soft'] ) ) {
+							return true;
+						}
+						return $best && $best['coverage'] >= self::ACCEPT && ( null === $t['doc'] || $t['doc'] === $best['doc'] ) && array_intersect( $t['loc'], $best['locators'] );
+					}
+				)
+			);
 
 			// Decide.
 			$note = '';

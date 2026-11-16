@@ -172,5 +172,14 @@ $q = run1( $an, $get, '<p>The signer adheres to some 11 statements. Article 11 s
 $locs = array_map( function ( $t ) { return $t['loc'][0]; }, $q[0]['typed'] );
 check( '15g text before and after the quotation are read separately -> typed 4 only, not 11', array( 4 ) === $locs, json_encode( $q[0]['typed'] ) );
 
+// 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
+$bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
+$q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );
+$last = end( $q );
+check( '16a bare "(2)" that the text does not support -> dropped, no conflict', 'conflict' !== $last['status'] && empty( $last['typed'] ), json_encode( $last ) );
+$q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(4)</p>' );
+$last = end( $q );
+check( '16b bare "(4)" that the text supports -> kept, high', 'high' === $last['status'] && 1 === count( $last['typed'] ), json_encode( $last ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );
