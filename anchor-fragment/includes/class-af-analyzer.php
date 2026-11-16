@@ -156,6 +156,23 @@ class AF_Analyzer {
 			foreach ( $marked as $mc ) {
 				$doc = $mc['doc']; // Set when the cite names its document in the same sentence.
 				if ( null === $doc ) {
+					// "Familiaris Consortio, no. 84": a title and a comma just before the number means it belongs to that
+					// work, which is not in the registry, so it is not a number of the document carried on from earlier.
+					if ( preg_match( '/\p{Lu}[\p{L}\'\x{2019}-]+(?:\s+(?:\p{Lu}[\p{L}\'\x{2019}-]+|of|et|the|de|in|on|and))*\s+\p{Lu}[\p{L}\'\x{2019}-]+,\s*$/u', $mc['pre'] ) || preg_match( '/\bvol(?:ume)?\.?\s+[\p{L}\d]+,\s*$/iu', $mc['pre'] ) ) {
+						continue;
+					}
+					// The same number already read as a named cite ("Amoris Laetitia, no. 301").
+					$dup = false;
+					foreach ( $typed as $t ) {
+						if ( $t['loc'] === $mc['loc'] ) {
+							$dup = true;
+						}
+					}
+					if ( $dup ) {
+						continue;
+					}
+				}
+				if ( null === $doc ) {
 					$doc = $carry;
 				}
 				if ( null === $doc && 1 === count( $hints ) ) {
@@ -440,7 +457,7 @@ class AF_Analyzer {
 				}
 				$doc = $named[0];
 			}
-			$out[] = array( 'loc' => $loc, 'doc' => $doc );
+			$out[] = array( 'loc' => $loc, 'doc' => $doc, 'pre' => substr( $text, max( 0, $m[0][1] - 60 ), min( 60, $m[0][1] ) ) );
 		}
 		return $out;
 	}

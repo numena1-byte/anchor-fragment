@@ -181,5 +181,11 @@ $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins t
 $last = end( $q );
 check( '16b bare "(4)" that the text supports -> kept, high', 'high' === $last['status'] && 1 === count( $last['typed'] ), json_encode( $last ) );
 
+// 17. "Some Other Work, no. 3" belongs to that work; a number already read as a named cite is not read twice.
+$q = run1( $an, $get, '<p>The Test Document says nothing here. As Familiaris Consortio, no. 3 puts it:</p><blockquote>' . $bread . '</blockquote>' );
+check( '17a "Familiaris Consortio, no. 3" is not a number of the Test Document -> no conflict', 'conflict' !== $q[0]['status'] && empty( $q[0]['typed'] ), json_encode( $q[0] ) );
+$q = run1( $an, $get, '<p>Earlier: Test Document 4. Then, as it says (Test Document, no. 4), we read:</p><blockquote>' . $bread . '</blockquote>' );
+check( '17b a number read as a named cite is not read twice', 'high' === $q[0]['status'] && 1 === count( $q[0]['typed'] ), json_encode( $q[0]['typed'] ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );
