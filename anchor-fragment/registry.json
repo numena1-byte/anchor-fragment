@@ -6,7 +6,10 @@
 			"id": "laudato-si",
 			"title": "Laudato si'",
 			"short": "LS",
-			"aliases": ["laudato si", "on care for our common home"],
+			"aliases": [
+				"laudato si",
+				"on care for our common home"
+			],
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 246,
@@ -16,7 +19,10 @@
 			"id": "fratelli-tutti",
 			"title": "Fratelli tutti",
 			"short": "FT",
-			"aliases": ["fratelli tutti", "on fraternity and social friendship"],
+			"aliases": [
+				"fratelli tutti",
+				"on fraternity and social friendship"
+			],
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 287,
@@ -26,7 +32,11 @@
 			"id": "evangelii-gaudium",
 			"title": "Evangelii gaudium",
 			"short": "EG",
-			"aliases": ["evangelii gaudium", "the joy of the gospel", "joy of the gospel"],
+			"aliases": [
+				"evangelii gaudium",
+				"the joy of the gospel",
+				"joy of the gospel"
+			],
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 288,
@@ -36,7 +46,10 @@
 			"id": "sacrosanctum-concilium",
 			"title": "Sacrosanctum Concilium",
 			"short": "SC",
-			"aliases": ["sacrosanctum concilium", "constitution on the sacred liturgy"],
+			"aliases": [
+				"sacrosanctum concilium",
+				"constitution on the sacred liturgy"
+			],
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 130,
@@ -46,7 +59,10 @@
 			"id": "lumen-gentium",
 			"title": "Lumen gentium",
 			"short": "LG",
-			"aliases": ["lumen gentium", "dogmatic constitution on the church"],
+			"aliases": [
+				"lumen gentium",
+				"dogmatic constitution on the church"
+			],
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 69,
@@ -56,7 +72,10 @@
 			"id": "gaudium-et-spes",
 			"title": "Gaudium et spes",
 			"short": "GS",
-			"aliases": ["gaudium et spes", "pastoral constitution on the church in the modern world"],
+			"aliases": [
+				"gaudium et spes",
+				"pastoral constitution on the church in the modern world"
+			],
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 93,
@@ -66,7 +85,10 @@
 			"id": "nostra-aetate",
 			"title": "Nostra aetate",
 			"short": "NA",
-			"aliases": ["nostra aetate","declaration on the relation of the church to non-christian religions"],
+			"aliases": [
+				"nostra aetate",
+				"declaration on the relation of the church to non-christian religions"
+			],
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 5,
@@ -77,7 +99,10 @@
 			"id": "dei-verbum",
 			"title": "Dei verbum",
 			"short": "DV",
-			"aliases": ["dei verbum","dogmatic constitution on divine revelation"],
+			"aliases": [
+				"dei verbum",
+				"dogmatic constitution on divine revelation"
+			],
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 26,
@@ -88,7 +113,10 @@
 			"id": "dignitatis-humanae",
 			"title": "Dignitatis humanae",
 			"short": "DH",
-			"aliases": ["dignitatis humanae","declaration on religious freedom"],
+			"aliases": [
+				"dignitatis humanae",
+				"declaration on religious freedom"
+			],
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 15,
@@ -99,7 +127,10 @@
 			"id": "unitatis-redintegratio",
 			"title": "Unitatis redintegratio",
 			"short": "UR",
-			"aliases": ["unitatis redintegratio","decree on ecumenism"],
+			"aliases": [
+				"unitatis redintegratio",
+				"decree on ecumenism"
+			],
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 24,
@@ -110,7 +141,10 @@
 			"id": "dilexi-te",
 			"title": "Dilexi te",
 			"short": "DT",
-			"aliases": ["dilexi te","i have loved you"],
+			"aliases": [
+				"dilexi te",
+				"i have loved you"
+			],
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 121,
@@ -120,7 +154,11 @@
 			"id": "catechism",
 			"title": "Catechism of the Catholic Church",
 			"short": "CCC",
-			"aliases": ["catechism of the catholic church", "catechism", "ccc"],
+			"aliases": [
+				"catechism of the catholic church",
+				"catechism",
+				"ccc"
+			],
 			"language": "en",
 			"scheme": "paragraph",
 			"expected_count": 2865,
@@ -131,7 +169,55 @@
 				"page_pattern": "__P[0-9A-Za-z]+\\.HTM",
 				"window": 40
 			},
-			"parse": { "bare_numbers": true, "strip_sup": true, "repair": false, "split_inline": true }
+			"parse": {
+				"bare_numbers": true,
+				"strip_sup": true,
+				"repair": false,
+				"split_inline": true
+			}
+		},
+		{
+			"id": "amoris-laetitia",
+			"title": "Amoris laetitia",
+			"short": "AL",
+			"aliases": [
+				"amoris laetitia",
+				"on love in the family"
+			],
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 325,
+			"max_locator": 325,
+			"url": "https://www.vatican.va/content/dam/francesco/pdf/apost_exhortations/documents/papa-francesco_esortazione-ap_20160319_amoris-laetitia_en.pdf",
+			"hosted": {
+				"url": "https://raw.githubusercontent.com/numena1-byte/anchor-fragment/c9be65f13afef9f258ee402c6013bfc08452eda6/data/amoris-laetitia@v1.json",
+				"sha256": "1b7584d3e2641ac4061bbdf119dc3c123a4088f3a9f9d77518bd9e614add5d95"
+			}
+		},
+		{
+			"id": "antiqua-et-nova",
+			"title": "Antiqua et nova",
+			"short": "AeN",
+			"aliases": [
+				"antiqua et nova",
+				"relationship between artificial intelligence and human intelligence"
+			],
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 117,
+			"url": "https://www.vatican.va/roman_curia/congregations/cfaith/documents/rc_ddf_doc_20250128_antiqua-et-nova_en.html"
+		},
+		{
+			"id": "magnifica-humanitas",
+			"title": "Magnifica humanitas",
+			"short": "MH",
+			"aliases": [
+				"magnifica humanitas"
+			],
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 245,
+			"url": "https://www.vatican.va/content/leo-xiv/en/encyclicals/documents/20260515-magnifica-humanitas.html"
 		}
 	]
 }

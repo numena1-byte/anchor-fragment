@@ -156,12 +156,14 @@ class AF_Rest {
 				<tbody>
 				<?php foreach ( AF_Service::status() as $row ) : ?>
 					<tr data-doc="<?php echo esc_attr( $row['id'] ); ?>">
-						<td><?php echo esc_html( $row['title'] ); ?><?php echo $row['multipage'] ? ' <em>(multi-page)</em>' : ''; ?></td>
+						<td><?php echo esc_html( $row['title'] ); ?><?php echo $row['multipage'] ? ' <em>(multi-page)</em>' : ( $row['hosted'] ? ' <em>(PDF, hosted data)</em>' : '' ); ?></td>
 						<td class="af-count"><?php echo null === $row['count'] ? '–' : esc_html( $row['count'] . ( $row['gaps'] ? ', ' . $row['gaps'] . ' gap(s)' : '' ) ); ?></td>
 						<td><?php echo esc_html( null === $row['expected'] ? '' : $row['expected'] ); ?></td>
 						<td class="af-idx"><?php echo $row['indexed'] ? ( $row['partial'] ? 'sample only' : 'yes' ) : ( $row['progress'] ? esc_html( $row['progress']['done'] . ' of ' . $row['progress']['total'] . ' pages' ) : 'no' ); ?></td>
 						<td>
-							<?php if ( $row['multipage'] && current_user_can( 'manage_options' ) ) : ?>
+							<?php if ( $row['hosted'] && current_user_can( 'manage_options' ) ) : ?>
+								<button class="button af-fetch" type="button"><?php echo $row['indexed'] ? 'Import again' : 'Import'; ?></button>
+							<?php elseif ( $row['multipage'] && current_user_can( 'manage_options' ) ) : ?>
 								<button class="button af-fetch" type="button"><?php echo $row['indexed'] && ! $row['partial'] ? 'Fetch again' : ( $row['progress'] ? 'Continue' : 'Fetch all' ); ?></button>
 								<button class="button af-fetch af-sample" type="button">Fetch sample (about 36 pages)</button>
 							<?php endif; ?>

@@ -112,6 +112,9 @@ class AF_Service {
 		if ( ! empty( $entry['multipage'] ) ) {
 			return self::get_multipage_doc( $id, $entry );
 		}
+		if ( ! empty( $entry['hosted'] ) ) {
+			return self::get_hosted_doc( $id, $entry );
+		}
 
 		$cached = get_option( $key );
 		if ( ! $refresh && is_array( $cached )
@@ -190,10 +193,25 @@ class AF_Service {
 			return new WP_Error( 'af_no_locator', sprintf( 'No paragraph "%s" found in %s (parsed %d paragraphs, %d to %d).', $locator, $id, $doc['meta']['stats']['count'], $doc['meta']['stats']['min'], $doc['meta']['stats']['max'] ), array( 'status' => 404 ) );
 		}
 		$p = $doc['paras'][ $loc ];
-		if ( empty( $p['frag'] ) ) {
+		if ( empty( $p['frag'] ) && ! isset( $p['page'] ) ) {
 			return new WP_Error( 'af_no_fragment', 'Paragraph found but no reliable fragment could be built: ' . $p['reason'], array( 'status' => 422 ) );
 		}
 		$reg = self::registry();
+		if ( isset( $p['page'] ) ) { // PDF-only document: link to the page, since PDF viewers do not do text fragments.
+			return array(
+				'doc'      => $id,
+				'title'    => $reg[ $id ]['title'],
+				'locator'  => $loc,
+				'url'      => $reg[ $id ]['url'],
+				'fragment' => null,
+				'page'     => (int) $p['page'],
+				'words'    => 0,
+				'link'     => $reg[ $id ]['url'] . '#page=' . (int) $p['page'],
+				'excerpt'  => '',
+				'source'   => $doc['meta']['source'],
+				'fetch_ms' => $doc['meta']['fetch_ms'],
+			);
+		}
 		return array(
 			'doc'      => $id,
 			'title'    => $reg[ $id ]['title'],
@@ -225,6 +243,15 @@ class AF_Service {
 		// they have been fetched from the test page.
 		$unindexed = array();
 		foreach ( self::registry() as $id => $entry ) {
+			if ( ! empty( $entry['hosted'] ) ) {
+				if ( ! self::has_index( $id ) ) {
+					$imp = self::import_hosted( $id );
+					if ( is_wp_error( $imp ) ) {
+						$unindexed[] = $id;
+					}
+				}
+				continue;
+			}
 			if ( ! empty( $entry['multipage'] ) ) {
 				if ( ! self::has_index( $id ) ) {
 					$unindexed[] = $id;
@@ -338,6 +365,101 @@ class AF_Service {
 		delete_option( 'af_ing_' . $id );
 	}
 
+	/* ------------------------------------------------------------------ hosted derived data */
+
+	const HOSTED_PREFIX = 'https://raw.githubusercontent.com/numena1-byte/anchor-fragment/';
+	const HOSTED_MAX    = 6 * MB_IN_BYTES;
+
+	/** A hosted document is only ever read from what an import left behind. */
+	private static function get_hosted_doc( $id, array $entry ) {
+		$cached = get_option( 'af_doc_' . $id );
+		if ( is_array( $cached ) && ( $cached['meta']['hosted_sha'] ?? '' ) === $entry['hosted']['sha256'] && self::has_index( $id ) ) {
+			$cached['meta']['source'] = 'cache';
+			return $cached;
+		}
+		$imp = self::import_hosted( $id );
+		if ( is_wp_error( $imp ) ) {
+			return $imp;
+		}
+		return get_option( 'af_doc_' . $id );
+	}
+
+	/**
+	 * Download a hosted index file (made outside the server from a PDF), check it, and store it.
+	 * It holds hashes and page numbers only, never the document's text.
+	 *
+	 * @return array|WP_Error { count, min, max, message }
+	 */
+	public static function import_hosted( $id, $force = false ) {
+		$reg = self::registry();
+		if ( ! isset( $reg[ $id ]['hosted'] ) ) {
+			return new WP_Error( 'af_not_hosted', 'No hosted data for ' . $id, array( 'status' => 400 ) );
+		}
+		$entry = $reg[ $id ];
+		$h     = $entry['hosted'];
+		if ( 0 !== strpos( $h['url'], self::HOSTED_PREFIX ) ) {
+			return new WP_Error( 'af_host', 'Hosted data must come from ' . self::HOSTED_PREFIX );
+		}
+		$old = get_option( 'af_doc_' . $id );
+		if ( ! $force && is_array( $old ) && ( $old['meta']['hosted_sha'] ?? '' ) === $h['sha256'] && self::has_index( $id ) ) {
+			return array( 'count' => (int) $old['meta']['stats']['count'], 'min' => (int) $old['meta']['stats']['min'], 'max' => (int) $old['meta']['stats']['max'], 'message' => 'Already imported.' );
+		}
+		$t0  = microtime( true );
+		$res = wp_safe_remote_get( $h['url'], array( 'timeout' => 30, 'redirection' => 2, 'limit_response_size' => self::HOSTED_MAX, 'user-agent' => self::user_agent() ) );
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+		if ( 200 !== (int) wp_remote_retrieve_response_code( $res ) ) {
+			return new WP_Error( 'af_http', 'Hosted data answered HTTP ' . wp_remote_retrieve_response_code( $res ), array( 'status' => 502 ) );
+		}
+		$body = wp_remote_retrieve_body( $res );
+		if ( ! hash_equals( $h['sha256'], hash( 'sha256', $body ) ) ) {
+			return new WP_Error( 'af_checksum', 'Hosted data does not match the checksum in the registry; not imported.', array( 'status' => 502 ) );
+		}
+		$d = json_decode( $body, true );
+		if ( ! is_array( $d ) || 1 !== ( $d['format'] ?? 0 ) || ( $d['id'] ?? '' ) !== $id || (int) ( $d['matcher_k'] ?? 0 ) !== AF_Matcher::K || empty( $d['index'] ) || empty( $d['pages'] ) ) {
+			return new WP_Error( 'af_hosted_format', 'Hosted data is not in a format this plugin version understands.', array( 'status' => 502 ) );
+		}
+		$paras = array();
+		foreach ( $d['pages'] as $loc => $page ) {
+			$paras[ (int) $loc ] = array(
+				'excerpt' => '',
+				'frag'    => null,
+				'words'   => 0,
+				'reason'  => 'PDF document: linked by page',
+				'page'    => (int) $page,
+				'hash'    => $d['para_hash'][ $loc ] ?? '',
+			);
+		}
+		ksort( $paras );
+		$min  = (int) min( array_keys( $paras ) );
+		$max  = (int) max( array_keys( $paras ) );
+		$gaps = array();
+		for ( $n = $min; $n <= $max; $n++ ) {
+			if ( ! isset( $paras[ $n ] ) ) {
+				$gaps[] = $n;
+			}
+		}
+		self::save_index( $id, $d['index'] );
+		$doc = array(
+			'meta'  => array(
+				'id' => $id, 'url' => $entry['url'], 'final_url' => $entry['url'], 'http' => 200, 'bytes' => strlen( $body ),
+				'charset' => 'hosted', 'content_type' => 'application/pdf', 'document_policy' => '',
+				'fetched_at' => time(), 'fetch_ms' => (int) round( ( microtime( true ) - $t0 ) * 1000 ),
+				'parser_version' => AF_Parser::VERSION, 'source' => 'hosted', 'complete' => true,
+				'hosted_sha' => $h['sha256'], 'expected_count' => $entry['expected_count'] ?? null,
+				'shingles' => count( $d['index'] ),
+				'stats' => array( 'count' => count( $paras ), 'min' => $min, 'max' => $max, 'gaps' => $gaps, 'rejected' => array(), 'inferred' => array(), 'blocks' => 0, 'duplicates' => array(), 'no_fragment' => array() ),
+			),
+			'paras' => $paras,
+		);
+		update_option( 'af_doc_' . $id, $doc, false );
+		return array(
+			'count' => count( $paras ), 'min' => $min, 'max' => $max,
+			'message' => sprintf( 'Imported %s: %d paragraphs (%d to %d), %d gap(s), %d index entries.', $entry['title'], count( $paras ), $min, $max, count( $gaps ), count( $d['index'] ) ),
+		);
+	}
+
 	/* ------------------------------------------------------------------ multi-page documents */
 
 	/** A multi-page document is only ever read from what a finished fetch left behind. */
@@ -372,6 +494,13 @@ class AF_Service {
 	 */
 	public static function ingest_step( $id, $budget = 25.0, $restart = false, $sample = false ) {
 		$reg = self::registry();
+		if ( isset( $reg[ $id ] ) && ! empty( $reg[ $id ]['hosted'] ) ) {
+			$msg = self::import_hosted( $id, true );
+			if ( is_wp_error( $msg ) ) {
+				return $msg;
+			}
+			return array( 'done' => 1, 'total' => 1, 'finished' => true, 'paragraphs' => $msg['count'], 'last' => $msg['max'], 'errors' => array(), 'message' => $msg['message'] );
+		}
 		if ( ! isset( $reg[ $id ] ) || empty( $reg[ $id ]['multipage'] ) ) {
 			return new WP_Error( 'af_not_multipage', 'Not a multi-page document: ' . $id, array( 'status' => 400 ) );
 		}
@@ -640,6 +769,7 @@ class AF_Service {
 				'id'        => $id,
 				'title'     => $entry['title'],
 				'multipage' => ! empty( $entry['multipage'] ),
+				'hosted'    => ! empty( $entry['hosted'] ),
 				'expected'  => $entry['expected_count'] ?? null,
 				'indexed'   => self::has_index( $id ),
 				'count'     => is_array( $doc ) ? (int) $doc['meta']['stats']['count'] : null,

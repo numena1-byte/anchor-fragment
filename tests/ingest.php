@@ -132,5 +132,22 @@ $s = AF_Service::status();
 $c = array_values( array_filter( $s, function ( $x ) { return 'catechism' === $x['id']; } ) )[0];
 check( 'sample: status reports partial and indexed', true === $c['partial'] && true === $c['indexed'] );
 
+// Hosted PDF document: import, checksum, page link.
+$datafile = dirname( $dir ) . '/data/amoris-laetitia@v1.json';
+$pages['amoris-laetitia@v1.json'] = file_get_contents( $datafile );
+check( 'hosted: before import the index is missing', false === AF_Service::has_index( 'amoris-laetitia' ) );
+$ri = AF_Service::ingest_step( 'amoris-laetitia' );
+check( 'hosted: import finishes with 325 paragraphs', ! is_wp_error( $ri ) && $ri['finished'] && 325 === $ri['paragraphs'], is_wp_error( $ri ) ? $ri->get_error_message() : json_encode( $ri ) );
+check( 'hosted: index saved', AF_Service::has_index( 'amoris-laetitia' ) );
+$al = AF_Service::link( 'amoris-laetitia', '126' );
+check( 'hosted: link for 126 is the PDF at page 95', ! is_wp_error( $al ) && substr( $al['link'], -8 ) === '#page=95' && false !== strpos( $al['link'], '.pdf' ), is_wp_error( $al ) ? $al->get_error_message() : $al['link'] );
+$sa = AF_Service::status();
+$ar = array_values( array_filter( $sa, function ( $x ) { return 'amoris-laetitia' === $x['id']; } ) )[0];
+check( 'hosted: status shows hosted, indexed, 325, no gaps', $ar['hosted'] && $ar['indexed'] && 325 === $ar['count'] && 0 === $ar['gaps'] );
+AF_Service::clear_doc( 'amoris-laetitia' );
+$pages['amoris-laetitia@v1.json'] .= ' ';
+$rb = AF_Service::ingest_step( 'amoris-laetitia' );
+check( 'hosted: a changed file is refused by the checksum', is_wp_error( $rb ) && 'af_checksum' === $rb->get_error_code() && ! AF_Service::has_index( 'amoris-laetitia' ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );
