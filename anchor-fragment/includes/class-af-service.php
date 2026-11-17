@@ -109,11 +109,14 @@ class AF_Service {
 		}
 		$entry = $reg[ $id ];
 		$key   = 'af_doc_' . $id;
+		if ( ! empty( $entry['hosted'] ) ) {
+			$h = self::get_hosted_doc( $id, $entry );
+			if ( ! is_wp_error( $h ) || empty( $entry['multipage'] ) ) {
+				return $h;
+			}
+		}
 		if ( ! empty( $entry['multipage'] ) ) {
 			return self::get_multipage_doc( $id, $entry );
-		}
-		if ( ! empty( $entry['hosted'] ) ) {
-			return self::get_hosted_doc( $id, $entry );
 		}
 
 		$cached = get_option( $key );
@@ -373,7 +376,9 @@ class AF_Service {
 	/** A hosted document is only ever read from what an import left behind. */
 	private static function get_hosted_doc( $id, array $entry ) {
 		$cached = get_option( 'af_doc_' . $id );
-		if ( is_array( $cached ) && ( $cached['meta']['hosted_sha'] ?? '' ) === $entry['hosted']['sha256'] && self::has_index( $id ) ) {
+		if ( is_array( $cached ) && self::has_index( $id ) && ! empty( $cached['meta']['complete'] ) && empty( $cached['meta']['partial'] )
+			&& ( ( $cached['meta']['hosted_sha'] ?? '' ) === $entry['hosted']['sha256']
+				|| ( ! empty( $entry['multipage'] ) && ( $cached['meta']['parser_version'] ?? 0 ) === AF_Parser::VERSION ) ) ) {
 			$cached['meta']['source'] = 'cache';
 			return $cached;
 		}
@@ -412,24 +417,67 @@ class AF_Service {
 		if ( 200 !== (int) wp_remote_retrieve_response_code( $res ) ) {
 			return new WP_Error( 'af_http', 'Hosted data answered HTTP ' . wp_remote_retrieve_response_code( $res ), array( 'status' => 502 ) );
 		}
-		$body = wp_remote_retrieve_body( $res );
+		return self::import_hosted_body( $id, wp_remote_retrieve_body( $res ), (int) round( ( microtime( true ) - $t0 ) * 1000 ) );
+	}
+
+	/**
+	 * Check a hosted index file against the checksum in the registry and store it. The file may have been
+	 * downloaded by import_hosted() or uploaded by hand; either way it is accepted only if it is exactly the
+	 * file the registry names.
+	 *
+	 * @return array|WP_Error { count, min, max, message }
+	 */
+	public static function import_hosted_body( $id, $body, $fetch_ms = 0 ) {
+		$reg = self::registry();
+		if ( ! isset( $reg[ $id ]['hosted'] ) ) {
+			return new WP_Error( 'af_not_hosted', 'No hosted data for ' . $id, array( 'status' => 400 ) );
+		}
+		$entry = $reg[ $id ];
+		$h     = $entry['hosted'];
 		if ( ! hash_equals( $h['sha256'], hash( 'sha256', $body ) ) ) {
-			return new WP_Error( 'af_checksum', 'Hosted data does not match the checksum in the registry; not imported.', array( 'status' => 502 ) );
+			return new WP_Error( 'af_checksum', 'This file does not match the checksum in the registry; not imported.', array( 'status' => 502 ) );
 		}
 		$d = json_decode( $body, true );
-		if ( ! is_array( $d ) || 1 !== ( $d['format'] ?? 0 ) || ( $d['id'] ?? '' ) !== $id || (int) ( $d['matcher_k'] ?? 0 ) !== AF_Matcher::K || empty( $d['index'] ) || empty( $d['pages'] ) ) {
+		if ( ! is_array( $d ) || ! in_array( $d['format'] ?? 0, array( 1, 2 ), true ) || ( $d['id'] ?? '' ) !== $id || (int) ( $d['matcher_k'] ?? 0 ) !== AF_Matcher::K || empty( $d['index'] ) ) {
 			return new WP_Error( 'af_hosted_format', 'Hosted data is not in a format this plugin version understands.', array( 'status' => 502 ) );
 		}
+		if ( 2 === (int) $d['format'] && (int) ( $d['parser_version'] ?? 0 ) !== AF_Parser::VERSION ) {
+			return new WP_Error( 'af_hosted_version', 'This file was built by a different parser version; a newer one is needed.', array( 'status' => 502 ) );
+		}
 		$paras = array();
-		foreach ( $d['pages'] as $loc => $page ) {
-			$paras[ (int) $loc ] = array(
-				'excerpt' => '',
-				'frag'    => null,
-				'words'   => 0,
-				'reason'  => 'PDF document: linked by page',
-				'page'    => (int) $page,
-				'hash'    => $d['para_hash'][ $loc ] ?? '',
-			);
+		if ( 1 === (int) $d['format'] ) { // PDF document: a page number per paragraph.
+			if ( empty( $d['pages'] ) ) {
+				return new WP_Error( 'af_hosted_format', 'Hosted data holds no pages.', array( 'status' => 502 ) );
+			}
+			foreach ( $d['pages'] as $loc => $page ) {
+				$paras[ (int) $loc ] = array(
+					'excerpt' => '',
+					'frag'    => null,
+					'words'   => 0,
+					'reason'  => 'PDF document: linked by page',
+					'page'    => (int) $page,
+					'hash'    => $d['para_hash'][ $loc ] ?? '',
+				);
+			}
+		} else { // Text-fragment links, one per paragraph.
+			if ( empty( $d['paras'] ) ) {
+				return new WP_Error( 'af_hosted_format', 'Hosted data holds no paragraphs.', array( 'status' => 502 ) );
+			}
+			foreach ( $d['paras'] as $loc => $p ) {
+				$row = array(
+					'excerpt' => '',
+					'frag'    => isset( $p['f'] ) && '' !== $p['f'] ? (string) $p['f'] : null,
+					'words'   => (int) ( $p['w'] ?? 0 ),
+					'reason'  => isset( $p['f'] ) && '' !== $p['f'] ? '' : (string) ( $p['r'] ?? 'no fragment' ),
+				);
+				if ( ! empty( $p['u'] ) ) {
+					if ( ! self::host_allowed( $p['u'] ) ) {
+						return new WP_Error( 'af_hosted_format', 'Hosted data names a page outside the allowed hosts.', array( 'status' => 502 ) );
+					}
+					$row['url'] = (string) $p['u'];
+				}
+				$paras[ (int) $loc ] = $row;
+			}
 		}
 		ksort( $paras );
 		$min  = (int) min( array_keys( $paras ) );
@@ -440,23 +488,82 @@ class AF_Service {
 				$gaps[] = $n;
 			}
 		}
-		self::save_index( $id, $d['index'] );
+		$no_frag = array();
+		if ( 2 === (int) $d['format'] ) {
+			foreach ( $paras as $loc => $p ) {
+				if ( empty( $p['frag'] ) ) {
+					$no_frag[ $loc ] = $p['reason'];
+				}
+			}
+		}
+		$idx = array();
+		foreach ( $d['index'] as $k => $v ) {
+			$idx[ (int) $k ] = $v;
+		}
+		self::save_index( $id, $idx );
 		$doc = array(
 			'meta'  => array(
 				'id' => $id, 'url' => $entry['url'], 'final_url' => $entry['url'], 'http' => 200, 'bytes' => strlen( $body ),
-				'charset' => 'hosted', 'content_type' => 'application/pdf', 'document_policy' => '',
-				'fetched_at' => time(), 'fetch_ms' => (int) round( ( microtime( true ) - $t0 ) * 1000 ),
+				'charset' => 'hosted', 'content_type' => '', 'document_policy' => '',
+				'fetched_at' => time(), 'fetch_ms' => $fetch_ms,
 				'parser_version' => AF_Parser::VERSION, 'source' => 'hosted', 'complete' => true,
 				'hosted_sha' => $h['sha256'], 'expected_count' => $entry['expected_count'] ?? null,
-				'shingles' => count( $d['index'] ),
-				'stats' => array( 'count' => count( $paras ), 'min' => $min, 'max' => $max, 'gaps' => $gaps, 'rejected' => array(), 'inferred' => array(), 'blocks' => 0, 'duplicates' => array(), 'no_fragment' => array() ),
+				'shingles' => count( $idx ),
+				'stats' => array( 'count' => count( $paras ), 'min' => $min, 'max' => $max, 'gaps' => $gaps, 'rejected' => array(), 'inferred' => array(), 'blocks' => 0, 'duplicates' => array(), 'no_fragment' => $no_frag ),
 			),
 			'paras' => $paras,
 		);
 		update_option( 'af_doc_' . $id, $doc, false );
 		return array(
 			'count' => count( $paras ), 'min' => $min, 'max' => $max,
-			'message' => sprintf( 'Imported %s: %d paragraphs (%d to %d), %d gap(s), %d index entries.', $entry['title'], count( $paras ), $min, $max, count( $gaps ), count( $d['index'] ) ),
+			'message' => sprintf( 'Imported %s: %d paragraphs (%d to %d), %d gap(s), %d index entries.', $entry['title'], count( $paras ), $min, $max, count( $gaps ), count( $idx ) ),
+		);
+	}
+
+	/**
+	 * A crawled document as a hosted file (format 2): the index and one text fragment per paragraph.
+	 * It holds no paragraph text, only the few words of each fragment.
+	 *
+	 * @return array|WP_Error
+	 */
+	public static function export_hosted( $id ) {
+		$reg = self::registry();
+		$doc = get_option( 'af_doc_' . $id );
+		if ( ! isset( $reg[ $id ] ) || ! is_array( $doc ) || empty( $doc['meta']['complete'] ) || ! empty( $doc['meta']['partial'] ) || ! self::has_index( $id ) ) {
+			return new WP_Error( 'af_export', 'Only a completely fetched document can be exported.', array( 'status' => 409 ) );
+		}
+		$paras = array();
+		foreach ( $doc['paras'] as $loc => $p ) {
+			$row = array( 'w' => (int) $p['words'] );
+			if ( ! empty( $p['frag'] ) ) {
+				$row['f'] = $p['frag'];
+			} else {
+				$row['r'] = (string) ( $p['reason'] ?? 'no fragment' );
+			}
+			if ( ! empty( $p['url'] ) ) {
+				$row['u'] = $p['url'];
+			}
+			$paras[ (int) $loc ] = $row;
+		}
+		ksort( $paras );
+		$idx = self::load_index( $id );
+		if ( ! is_array( $idx ) ) {
+			return new WP_Error( 'af_export', 'The index is incomplete.', array( 'status' => 409 ) );
+		}
+		ksort( $idx );
+		return array(
+			'format'         => 2,
+			'id'             => $id,
+			'title'          => $reg[ $id ]['title'],
+			'matcher_k'      => AF_Matcher::K,
+			'parser_version' => AF_Parser::VERSION,
+			'count'          => count( $paras ),
+			'min'            => (int) min( array_keys( $paras ) ),
+			'max'            => (int) max( array_keys( $paras ) ),
+			'link_mode'      => 'fragment',
+			'shingles'       => count( $idx ),
+			'paras'          => $paras,
+			'index'          => $idx,
 		);
 	}
 
@@ -492,9 +599,9 @@ class AF_Service {
 	 *
 	 * @return array|WP_Error { done, total, finished, paragraphs, last, errors[], message }
 	 */
-	public static function ingest_step( $id, $budget = 25.0, $restart = false, $sample = false ) {
+	public static function ingest_step( $id, $budget = 25.0, $restart = false, $sample = false, $crawl = false ) {
 		$reg = self::registry();
-		if ( isset( $reg[ $id ] ) && ! empty( $reg[ $id ]['hosted'] ) ) {
+		if ( ! $crawl && isset( $reg[ $id ] ) && ! empty( $reg[ $id ]['hosted'] ) ) {
 			$msg = self::import_hosted( $id, true );
 			if ( is_wp_error( $msg ) ) {
 				return $msg;
@@ -759,6 +866,63 @@ class AF_Service {
 		);
 	}
 
+	/**
+	 * What decides whether this server can fetch the documents: outbound requests, limits, versions.
+	 *
+	 * @return array[] each { name, status ok|warn|fail, detail }
+	 */
+	public static function check_server() {
+		$rows = array();
+		$add  = function ( $name, $status, $detail ) use ( &$rows ) {
+			$rows[] = array( 'name' => $name, 'status' => $status, 'detail' => $detail );
+		};
+
+		$add( 'PHP version', version_compare( PHP_VERSION, '7.4', '>=' ) ? 'ok' : 'warn', PHP_VERSION );
+		$met = (int) ini_get( 'max_execution_time' );
+		$add( 'PHP time limit', ( 0 === $met || $met >= 30 ) ? 'ok' : 'warn', 0 === $met ? 'none' : $met . ' seconds' . ( $met < 30 ? ' (a crawl step may be cut short; it carries on when you press the button again)' : '' ) );
+		$mem = ini_get( 'memory_limit' );
+		$mb  = (int) wp_convert_hr_to_bytes( $mem ) / MB_IN_BYTES;
+		$add( 'PHP memory limit', ( $mb < 0 || $mb >= 128 ) ? 'ok' : 'warn', $mem . ( $mb >= 0 && $mb < 128 ? ' (loading a large index may fail)' : '' ) );
+		if ( defined( 'WP_HTTP_BLOCK_EXTERNAL' ) && WP_HTTP_BLOCK_EXTERNAL ) {
+			$hosts = defined( 'WP_ACCESSIBLE_HOSTS' ) ? (string) WP_ACCESSIBLE_HOSTS : '';
+			$need  = array( 'www.vatican.va', 'raw.githubusercontent.com' );
+			$miss  = array();
+			foreach ( $need as $n ) {
+				if ( false === stripos( $hosts, $n ) && false === strpos( $hosts, '*' ) ) {
+					$miss[] = $n;
+				}
+			}
+			$add( 'Outgoing requests', $miss ? 'fail' : 'ok', $miss ? 'WP_HTTP_BLOCK_EXTERNAL is on and WP_ACCESSIBLE_HOSTS does not list: ' . implode( ', ', $miss ) : 'WP_HTTP_BLOCK_EXTERNAL is on; both hosts are allowed' );
+		} else {
+			$add( 'Outgoing requests', 'ok', 'not blocked by WordPress settings' );
+		}
+		if ( function_exists( 'curl_version' ) ) {
+			$cv = curl_version();
+			$add( 'cURL and OpenSSL', 'ok', 'cURL ' . $cv['version'] . ', ' . ( $cv['ssl_version'] ?? 'no SSL' ) );
+		}
+
+		$tests = array(
+			array( 'vatican.va (robots.txt)', 'https://www.vatican.va/robots.txt' ),
+			array( 'GitHub (hosted data)', self::HOSTED_PREFIX . 'main/README.md' ),
+		);
+		foreach ( $tests as $t ) {
+			$t0  = microtime( true );
+			$res = wp_safe_remote_get( $t[1], array( 'timeout' => 10, 'redirection' => 2, 'user-agent' => self::user_agent(), 'limit_response_size' => 200000 ) );
+			$ms  = (int) round( ( microtime( true ) - $t0 ) * 1000 );
+			if ( is_wp_error( $res ) ) {
+				$add( $t[0], 'fail', $res->get_error_message() );
+				continue;
+			}
+			$code = (int) wp_remote_retrieve_response_code( $res );
+			$extra = '';
+			if ( false !== strpos( $t[1], 'robots.txt' ) && preg_match( '/crawl-delay:\s*(\d+)/i', wp_remote_retrieve_body( $res ), $m ) ) {
+				$extra = '; it asks for a ' . $m[1] . '-second pause between requests';
+			}
+			$add( $t[0], 200 === $code ? 'ok' : ( 404 === $code && false !== strpos( $t[1], 'github' ) ? 'ok' : 'fail' ), 'HTTP ' . $code . ' in ' . $ms . ' ms' . $extra . ( 404 === $code && false !== strpos( $t[1], 'github' ) ? ' (reachable)' : '' ) );
+		}
+		return $rows;
+	}
+
 	/** One row per registry document, for the test page. */
 	public static function status() {
 		$rows = array();
@@ -770,6 +934,7 @@ class AF_Service {
 				'title'     => $entry['title'],
 				'multipage' => ! empty( $entry['multipage'] ),
 				'hosted'    => ! empty( $entry['hosted'] ),
+				'pdf'       => false !== stripos( (string) ( $entry['url'] ?? '' ), '.pdf' ),
 				'expected'  => $entry['expected_count'] ?? null,
 				'indexed'   => self::has_index( $id ),
 				'count'     => is_array( $doc ) ? (int) $doc['meta']['stats']['count'] : null,

@@ -18,6 +18,8 @@ class AF_Rest {
 	public static function init() {
 		add_action( 'rest_api_init', array( __CLASS__, 'register_routes' ) );
 		add_action( 'admin_menu', array( __CLASS__, 'add_page' ) );
+		add_action( 'admin_post_af_export', array( __CLASS__, 'handle_export' ) );
+		add_action( 'admin_post_af_import_file', array( __CLASS__, 'handle_import_file' ) );
 	}
 
 	public static function register_routes() {
@@ -55,7 +57,28 @@ class AF_Rest {
 						'default'           => false,
 						'sanitize_callback' => 'rest_sanitize_boolean',
 					),
+					'crawl'   => array(
+						'default'           => false,
+						'sanitize_callback' => 'rest_sanitize_boolean',
+					),
 				),
+			)
+		);
+
+		register_rest_route(
+			'anchorfrag/v1',
+			'/check',
+			array(
+				'methods'             => 'GET',
+				'callback'            => function () {
+					if ( function_exists( 'set_time_limit' ) ) {
+						@set_time_limit( 60 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+					}
+					return rest_ensure_response( AF_Service::check_server() );
+				},
+				'permission_callback' => function () {
+					return current_user_can( 'manage_options' );
+				},
 			)
 		);
 
@@ -114,7 +137,7 @@ class AF_Rest {
 		if ( function_exists( 'set_time_limit' ) ) {
 			@set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
 		}
-		$res = AF_Service::ingest_step( $req['doc'], 25.0, (bool) $req['restart'], (bool) $req['sample'] );
+		$res = AF_Service::ingest_step( $req['doc'], 25.0, (bool) $req['restart'], (bool) $req['sample'], (bool) $req['crawl'] );
 		return is_wp_error( $res ) ? $res : rest_ensure_response( $res );
 	}
 
@@ -133,6 +156,51 @@ class AF_Rest {
 		return is_wp_error( $res ) ? $res : rest_ensure_response( $res );
 	}
 
+	/** Download a crawled document as a hosted data file (administrators only). */
+	public static function handle_export() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Not allowed.', 403 );
+		}
+		$id = isset( $_GET['doc'] ) ? sanitize_key( wp_unslash( $_GET['doc'] ) ) : '';
+		check_admin_referer( 'af_export_' . $id );
+		$data = AF_Service::export_hosted( $id );
+		if ( is_wp_error( $data ) ) {
+			wp_die( esc_html( $data->get_error_message() ), 409 );
+		}
+		$body = wp_json_encode( $data );
+		nocache_headers();
+		header( 'Content-Type: application/json; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename="' . $id . '@parser' . (int) $data['parser_version'] . '.json"' );
+		header( 'Content-Length: ' . strlen( $body ) );
+		echo $body; // phpcs:ignore WordPress.Security.EscapeOutput
+		exit;
+	}
+
+	/** Import a hosted data file that was uploaded by hand. It must match the registry's checksum. */
+	public static function handle_import_file() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Not allowed.', 403 );
+		}
+		check_admin_referer( 'af_import_file' );
+		$id  = isset( $_POST['doc'] ) ? sanitize_key( wp_unslash( $_POST['doc'] ) ) : '';
+		$msg = 'No file was uploaded.';
+		$ok  = false;
+		if ( ! empty( $_FILES['file']['tmp_name'] ) && is_uploaded_file( $_FILES['file']['tmp_name'] ) ) { // phpcs:ignore WordPress.Security
+			if ( (int) $_FILES['file']['size'] > AF_Service::HOSTED_MAX ) { // phpcs:ignore WordPress.Security
+				$msg = 'The file is too large.';
+			} else {
+				if ( function_exists( 'set_time_limit' ) ) {
+					@set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+				}
+				$res = AF_Service::import_hosted_body( $id, (string) file_get_contents( $_FILES['file']['tmp_name'] ) ); // phpcs:ignore WordPress.Security
+				$ok  = ! is_wp_error( $res );
+				$msg = $ok ? $res['message'] : $res->get_error_message();
+			}
+		}
+		wp_safe_redirect( add_query_arg( array( 'page' => 'af-test', 'af_notice' => rawurlencode( $msg ), 'af_ok' => $ok ? 1 : 0 ), admin_url( 'tools.php' ) ) );
+		exit;
+	}
+
 	public static function add_page() {
 		add_management_page( 'Anchor Fragment Test', 'Anchor Fragment Test', 'edit_posts', 'af-test', array( __CLASS__, 'render_page' ) );
 	}
@@ -143,6 +211,7 @@ class AF_Rest {
 			'match'  => rest_url( 'anchorfrag/v1/match' ),
 			'ingest' => rest_url( 'anchorfrag/v1/ingest' ),
 			'status' => rest_url( 'anchorfrag/v1/status' ),
+			'check'  => rest_url( 'anchorfrag/v1/check' ),
 			'nonce' => wp_create_nonce( 'wp_rest' ),
 		);
 		?>
@@ -161,11 +230,17 @@ class AF_Rest {
 						<td><?php echo esc_html( null === $row['expected'] ? '' : $row['expected'] ); ?></td>
 						<td class="af-idx"><?php echo $row['indexed'] ? ( $row['partial'] ? 'sample only' : 'yes' ) : ( $row['progress'] ? esc_html( $row['progress']['done'] . ' of ' . $row['progress']['total'] . ' pages' ) : 'no' ); ?></td>
 						<td>
-							<?php if ( $row['hosted'] && current_user_can( 'manage_options' ) ) : ?>
-								<button class="button af-fetch" type="button"><?php echo $row['indexed'] ? 'Import again' : 'Import'; ?></button>
-							<?php elseif ( $row['multipage'] && current_user_can( 'manage_options' ) ) : ?>
-								<button class="button af-fetch" type="button"><?php echo $row['indexed'] && ! $row['partial'] ? 'Fetch again' : ( $row['progress'] ? 'Continue' : 'Fetch all' ); ?></button>
-								<button class="button af-fetch af-sample" type="button">Fetch sample (about 36 pages)</button>
+							<?php if ( current_user_can( 'manage_options' ) ) : ?>
+								<?php if ( $row['hosted'] ) : ?>
+									<button class="button af-fetch" type="button"><?php echo $row['indexed'] ? 'Import again' : 'Import'; ?></button>
+								<?php endif; ?>
+								<?php if ( $row['multipage'] ) : ?>
+									<button class="button af-fetch" data-crawl="1" type="button"><?php echo $row['indexed'] && ! $row['partial'] ? 'Crawl again' : ( $row['progress'] ? 'Continue crawl' : 'Crawl vatican.va' ); ?></button>
+									<button class="button af-fetch af-sample" data-crawl="1" type="button">Crawl a sample (about 36 pages)</button>
+								<?php endif; ?>
+								<?php if ( $row['indexed'] && ! $row['partial'] && ! $row['pdf'] ) : ?>
+									<a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=af_export&doc=' . $row['id'] ), 'af_export_' . $row['id'] ) ); ?>">Export file</a>
+								<?php endif; ?>
 							<?php endif; ?>
 						</td>
 					</tr>
@@ -173,6 +248,31 @@ class AF_Rest {
 				</tbody>
 			</table>
 			<p id="af-docs-msg" style="max-width:60em"></p>
+			<?php if ( isset( $_GET['af_notice'] ) ) : // phpcs:ignore WordPress.Security.NonceVerification ?>
+				<div class="notice notice-<?php echo ! empty( $_GET['af_ok'] ) ? 'success' : 'error'; // phpcs:ignore WordPress.Security ?>" style="max-width:60em"><p><?php echo esc_html( rawurldecode( wp_unslash( $_GET['af_notice'] ) ) ); // phpcs:ignore WordPress.Security ?></p></div>
+			<?php endif; ?>
+			<?php if ( current_user_can( 'manage_options' ) ) : ?>
+				<h3>Import from a file</h3>
+				<p style="max-width:60em">If this server cannot download the data, download the file for a document from the plugin's repository on GitHub and upload it here. It is accepted only if it is exactly the file the registry names.</p>
+				<form method="post" enctype="multipart/form-data" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+					<input type="hidden" name="action" value="af_import_file">
+					<?php wp_nonce_field( 'af_import_file' ); ?>
+					<select name="doc">
+						<?php foreach ( AF_Service::registry() as $id => $d ) : ?>
+							<?php if ( ! empty( $d['hosted'] ) ) : ?>
+								<option value="<?php echo esc_attr( $id ); ?>"><?php echo esc_html( $d['title'] ); ?></option>
+							<?php endif; ?>
+						<?php endforeach; ?>
+					</select>
+					<input type="file" name="file" accept=".json,application/json">
+					<button class="button" type="submit">Import file</button>
+				</form>
+
+				<h3 style="margin-top:2em">Check this server</h3>
+				<p style="max-width:60em">Tests whether this server can reach vatican.va and GitHub, and shows the limits that decide whether a crawl can finish.</p>
+				<button class="button" type="button" id="af-check">Check this server</button>
+				<div id="af-check-out" style="margin-top:1em;max-width:60em"></div>
+			<?php endif; ?>
 
 			<hr>
 			<h2>Build a link</h2>
@@ -213,6 +313,7 @@ class AF_Rest {
 					var row = btn.closest('tr');
 					var doc = row.getAttribute('data-doc');
 					var sample = btn.classList.contains('af-sample');
+					var crawl = btn.getAttribute('data-crawl') === '1';
 					var restart = sample || /again/.test(btn.textContent);
 					var idx = row.querySelector('.af-idx');
 					Array.prototype.forEach.call(row.querySelectorAll('.af-fetch'), function (x) { x.disabled = true; });
@@ -220,6 +321,7 @@ class AF_Rest {
 						var q = new URLSearchParams({ doc: doc });
 						if (first && restart) { q.set('restart', '1'); }
 						if (sample) { q.set('sample', '1'); }
+						if (crawl) { q.set('crawl', '1'); }
 						return fetch(cfg.ingest + '?' + q.toString(), { method: 'POST', headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' })
 							.then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
 							.then(function (res) {
@@ -236,6 +338,32 @@ class AF_Rest {
 					step(true);
 				});
 			});
+
+			/* ---- check this server ---- */
+			var chk = document.getElementById('af-check');
+			if (chk) {
+				chk.addEventListener('click', function () {
+					var box = document.getElementById('af-check-out');
+					chk.disabled = true;
+					box.textContent = 'Checking… (up to about 20 seconds)';
+					fetch(cfg.check, { headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' })
+						.then(function (r) { return r.json(); })
+						.then(function (rows) {
+							box.textContent = '';
+							var tb = document.createElement('table');
+							tb.className = 'widefat striped';
+							(rows.length ? rows : []).forEach(function (r) {
+								var tr = document.createElement('tr');
+								var mark = { ok: 'OK', warn: 'Warning', fail: 'Problem' }[r.status] || r.status;
+								[mark, r.name, r.detail].forEach(function (t) { var td = document.createElement('td'); td.textContent = t; tr.appendChild(td); });
+								tb.appendChild(tr);
+							});
+							box.appendChild(tb);
+							chk.disabled = false;
+						})
+						.catch(function (err) { box.textContent = 'The check failed (' + err + ').'; chk.disabled = false; });
+				});
+			}
 
 			/* ---- build a link ---- */
 			var form = document.getElementById('af-form');
