@@ -42,14 +42,15 @@ function wp_safe_remote_get( $url, $args = array() ) {
 	if ( ! isset( $pages[ $name ] ) ) { return array( 'code' => 404, 'body' => '', 'headers' => array() ); }
 	return array( 'code' => 200, 'body' => $pages[ $name ], 'headers' => array( 'content-type' => 'text/html; charset=utf-8' ) );
 }
+function ingest_crawl( $id, $b = 25.0, $r = false, $s = false ) { return AF_Service::ingest_step( $id, $b, $r, $s, true ); }
 foreach ( array( 'parser', 'fragment', 'matcher', 'analyzer', 'service' ) as $f ) {
 	require AF_DIR . "includes/class-af-$f.php";
 }
 
 if ( 'A' === $mode ) {
 	$r = null;
-	AF_Service::ingest_step( 'catechism', 0.0 );
-	for ( $k = 0; $k < 6 && ( null === $r || ! $r['finished'] ); $k++ ) { $r = AF_Service::ingest_step( 'catechism', 25.0 ); }
+	ingest_crawl( 'catechism', 0.0 );
+	for ( $k = 0; $k < 6 && ( null === $r || ! $r['finished'] ); $k++ ) { $r = ingest_crawl( 'catechism', 25.0 ); }
 	$link4 = AF_Service::link( 'catechism', '4' );
 	$data  = AF_Service::export_hosted( 'catechism' );
 	check( 'A: the crawl finished and exported', ! is_wp_error( $data ) && 5 === $data['count'] && 2 === $data['format'], is_wp_error( $data ) ? $data->get_error_message() : '' );

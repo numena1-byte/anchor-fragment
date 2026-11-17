@@ -382,10 +382,17 @@ class AF_Service {
 			$cached['meta']['source'] = 'cache';
 			return $cached;
 		}
+		// A download that just failed is not tried again for ten minutes, so a blocked host is not asked on every request.
+		$failed = (int) get_option( 'af_hosted_fail_' . $id, 0 );
+		if ( $failed && time() - $failed < 600 ) {
+			return new WP_Error( 'af_incomplete', 'The hosted data for ' . $entry['title'] . ' could not be downloaded a moment ago. Try the Import button, or upload the file, on the Anchor Fragment Test page.', array( 'status' => 409 ) );
+		}
 		$imp = self::import_hosted( $id );
 		if ( is_wp_error( $imp ) ) {
+			update_option( 'af_hosted_fail_' . $id, time(), false );
 			return $imp;
 		}
+		delete_option( 'af_hosted_fail_' . $id );
 		return get_option( 'af_doc_' . $id );
 	}
 
@@ -514,6 +521,7 @@ class AF_Service {
 			'paras' => $paras,
 		);
 		update_option( 'af_doc_' . $id, $doc, false );
+		delete_option( 'af_hosted_fail_' . $id );
 		return array(
 			'count' => count( $paras ), 'min' => $min, 'max' => $max,
 			'message' => sprintf( 'Imported %s: %d paragraphs (%d to %d), %d gap(s), %d index entries.', $entry['title'], count( $paras ), $min, $max, count( $gaps ), count( $idx ) ),

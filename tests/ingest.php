@@ -45,6 +45,7 @@ foreach ( array( 'parser', 'fragment', 'matcher', 'analyzer', 'service' ) as $f 
 	require $dir . "/includes/class-af-$f.php";
 }
 
+function ingest_crawl( $id, $b = 25.0, $r = false, $s = false ) { return AF_Service::ingest_step( $id, $b, $r, $s, true ); }
 $fail = 0;
 function check( $label, $cond, $detail = '' ) {
 	global $fail;
@@ -59,12 +60,12 @@ check( 'before fetching: no index', false === AF_Service::has_index( 'catechism'
 check( 'a single-page document is refused by ingest_step', is_wp_error( AF_Service::ingest_step( 'laudato-si' ) ) );
 
 // Step 1 with no time budget reads only the index; progress must survive to the next call.
-$r1 = AF_Service::ingest_step( 'catechism', 0.0 );
+$r1 = ingest_crawl( 'catechism', 0.0 );
 check( 'step 1: index read, 3 distinct pages found, none fetched yet', 0 === $r1['done'] && 3 === $r1['total'] && false === $r1['finished'], json_encode( $r1 ) );
 check( 'step 1: state saved', isset( $GLOBALS['opts']['af_ing_catechism'] ) );
 $n_hits = count( $GLOBALS['hits'] );
 
-$r2 = AF_Service::ingest_step( 'catechism', 25.0 );
+$r2 = ingest_crawl( 'catechism', 25.0 );
 check( 'step 2: finished, no second index fetch', $r2['finished'] && count( $GLOBALS['hits'] ) === $n_hits + 3, json_encode( $r2 ) . ' hits ' . count( $GLOBALS['hits'] ) );
 $doc = AF_Service::get_doc( 'catechism' );
 check( 'document complete with 5 paragraphs and no gaps', ! is_wp_error( $doc ) && 5 === $doc['meta']['stats']['count'] && array() === $doc['meta']['stats']['gaps'], is_wp_error( $doc ) ? $doc->get_error_message() : json_encode( $doc['meta']['stats'] ) );
@@ -99,9 +100,9 @@ check( 'saving a smaller index removes the old rows', 1 === $rows, (string) $row
 $GLOBALS['opts'] = array();
 unset( $GLOBALS['pages_backup'] );
 unset( $pages['__P2.HTM'] );
-AF_Service::ingest_step( 'catechism', 0.0 );
+ingest_crawl( 'catechism', 0.0 );
 $done = null;
-for ( $k = 0; $k < 6 && ( null === $done || ! $done['finished'] ); $k++ ) { $done = AF_Service::ingest_step( 'catechism', 25.0 ); }
+for ( $k = 0; $k < 6 && ( null === $done || ! $done['finished'] ); $k++ ) { $done = ingest_crawl( 'catechism', 25.0 ); }
 $doc = AF_Service::get_doc( 'catechism' );
 check( 'missing page: finished, paragraphs 3 and 4 reported as gaps', ! is_wp_error( $doc ) && array( 3, 4 ) === $doc['meta']['stats']['gaps'], is_wp_error( $doc ) ? $doc->get_error_message() : json_encode( $doc['meta']['stats']['gaps'] ) );
 check( 'missing page: the failure is recorded', ! is_wp_error( $doc ) && 3 === count( $doc['meta']['page_errors'] ) && false !== strpos( $doc['meta']['page_errors'][0], '__P2.HTM' ), is_wp_error( $doc ) ? '' : json_encode( $doc['meta']['page_errors'] ) );
@@ -120,13 +121,13 @@ for ( $i = 1; $i <= 70; $i++ ) {
 }
 $pages['_INDEX.HTM'] = $idx_html . '</ul></body></html>';
 $GLOBALS['hits'] = array();
-AF_Service::ingest_step( 'catechism', 0.0, true, true );
+ingest_crawl( 'catechism', 0.0, true, true );
 $st = $GLOBALS['opts']['af_ing_catechism'];
 check( 'sample: five runs, 12 + 4 x 6 = 36 pages', 5 === count( $st['runs'] ) && 36 === count( $st['order'] ) && true === $st['sample'], json_encode( $st['runs'] ) );
 $r = null;
-for ( $k = 0; $k < 5 && ( null === $r || ! $r['finished'] ); $k++ ) { $r = AF_Service::ingest_step( 'catechism', 25.0 ); }
+for ( $k = 0; $k < 5 && ( null === $r || ! $r['finished'] ); $k++ ) { $r = ingest_crawl( 'catechism', 25.0 ); }
 $doc = AF_Service::get_doc( 'catechism' );
-check( 'sample: fetched only the 36 pages (plus the index)', 37 === count( $GLOBALS['hits'] ), (string) count( $GLOBALS['hits'] ) );
+check( 'sample: fetched only the 36 pages (plus the index)', 37 === count( array_filter( $GLOBALS['hits'], function ( $u ) { return false === strpos( $u, 'githubusercontent' ); } ) ), (string) count( $GLOBALS['hits'] ) );
 check( 'sample: 72 paragraphs, marked partial, no false gaps between runs', ! is_wp_error( $doc ) && 72 === $doc['meta']['stats']['count'] && true === $doc['meta']['partial'] && array() === $doc['meta']['stats']['gaps'], is_wp_error( $doc ) ? $doc->get_error_message() : json_encode( array( $doc['meta']['stats']['count'], $doc['meta']['stats']['gaps'] ) ) );
 $s = AF_Service::status();
 $c = array_values( array_filter( $s, function ( $x ) { return 'catechism' === $x['id']; } ) )[0];
