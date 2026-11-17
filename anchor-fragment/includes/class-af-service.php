@@ -575,6 +575,67 @@ class AF_Service {
 		);
 	}
 
+	/* ------------------------------------------------------------------ passage text */
+
+	/**
+	 * The text of one paragraph, fetched from vatican.va when asked for (one page, nothing stored).
+	 * The text is checked against the stored index: if the paragraph found here is not the one the index was
+	 * built from, 'verified' is false.
+	 *
+	 * @return array|WP_Error { doc, title, short, locator, text, link, verified, fetch_ms }
+	 */
+	public static function passage( $id, $locator ) {
+		$reg = self::registry();
+		if ( ! isset( $reg[ $id ] ) ) {
+			return new WP_Error( 'af_unknown_doc', 'Unknown document id: ' . $id, array( 'status' => 404 ) );
+		}
+		$entry = $reg[ $id ];
+		if ( false !== stripos( (string) $entry['url'], '.pdf' ) ) {
+			return new WP_Error( 'af_pdf', $entry['title'] . ' exists only as a PDF, and reading text from a PDF is not built yet.', array( 'status' => 501 ) );
+		}
+		$loc = (int) $locator;
+		$doc = self::get_doc( $id );
+		if ( is_wp_error( $doc ) ) {
+			return $doc;
+		}
+		if ( ! isset( $doc['paras'][ $loc ] ) ) {
+			return new WP_Error( 'af_no_paragraph', 'No paragraph ' . $loc . ' in ' . $entry['title'] . '.', array( 'status' => 404 ) );
+		}
+		$url = ! empty( $doc['paras'][ $loc ]['url'] ) ? $doc['paras'][ $loc ]['url'] : $entry['url'];
+		$t0  = microtime( true );
+		$res = self::http_get( $url );
+		if ( is_wp_error( $res ) ) {
+			return new WP_Error( $res->get_error_code(), $res->get_error_message(), array( 'status' => 502 ) );
+		}
+		if ( 200 !== $res['code'] ) {
+			return new WP_Error( 'af_http', 'vatican.va answered HTTP ' . $res['code'] . ' for ' . $url, array( 'status' => 502 ) );
+		}
+		list( $html ) = AF_Parser::to_utf8( $res['body'], $res['content_type'] );
+		$opts         = array_merge( self::parse_opts( $entry ), array( 'after' => max( 0, $loc - 1 ), 'window' => 1 ) );
+		$parsed       = AF_Parser::parse( $html, (int) ( $entry['max_locator'] ?? 0 ), $opts );
+		if ( ! isset( $parsed['paragraphs'][ $loc ] ) ) {
+			return new WP_Error( 'af_no_paragraph', 'Paragraph ' . $loc . ' was not found on ' . $url . '.', array( 'status' => 502 ) );
+		}
+		$text     = trim( preg_replace( '/\s+/u', ' ', preg_replace( '/\s*\[\d{1,3}\]/', '', $parsed['paragraphs'][ $loc ]['full'] ) ) );
+		$verified = false;
+		$idx      = self::load_index( $id );
+		if ( is_array( $idx ) ) {
+			$sc       = AF_Matcher::score( AF_Matcher::segments( $text ), $idx );
+			$verified = $sc['coverage'] >= 0.8 && in_array( $loc, $sc['locators'], true );
+		}
+		$link = self::link( $id, (string) $loc );
+		return array(
+			'doc'      => $id,
+			'title'    => $entry['title'],
+			'short'    => $entry['short'] ?? '',
+			'locator'  => $loc,
+			'text'     => $text,
+			'link'     => is_wp_error( $link ) ? $url : $link['link'],
+			'verified' => $verified,
+			'fetch_ms' => (int) round( ( microtime( true ) - $t0 ) * 1000 ),
+		);
+	}
+
 	/* ------------------------------------------------------------------ multi-page documents */
 
 	/** A multi-page document is only ever read from what a finished fetch left behind. */

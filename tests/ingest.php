@@ -150,5 +150,19 @@ $pages['amoris-laetitia@v1.json'] .= ' ';
 $rb = AF_Service::ingest_step( 'amoris-laetitia' );
 check( 'hosted: a changed file is refused by the checksum', is_wp_error( $rb ) && 'af_checksum' === $rb->get_error_code() && ! AF_Service::has_index( 'amoris-laetitia' ) );
 
+// Insert quotation: one page fetched, paragraph cut out, checked against the index.
+$pages['__P2.HTM'] = $pages['__P2.HTM']; // unchanged
+$h0 = count( $GLOBALS['hits'] );
+$pq = AF_Service::passage( 'catechism', 3 );
+check( 'passage: returns paragraph 3 in full, footnote mark removed', ! is_wp_error( $pq ) && 0 === strpos( $pq['text'], 'Paragraph number 3 says' ) && false === strpos( $pq['text'], '[' ), json_encode( $pq ) );
+check( 'passage: fetched exactly one page', count( $GLOBALS['hits'] ) === $h0 + 1, (string) ( count( $GLOBALS['hits'] ) - $h0 ) );
+check( 'passage: checked against the index', ! is_wp_error( $pq ) && true === $pq['verified'], json_encode( $pq ) );
+check( 'passage: a link is returned', ! is_wp_error( $pq ) && '' !== $pq['link'] );
+$pages['__P2.HTM'] = str_replace( 'something plain about page 2 and its neighbours', 'quite another thing entirely about wholly different matters', $pages['__P2.HTM'] );
+$pq2 = AF_Service::passage( 'catechism', 3 );
+check( 'passage: changed source text is flagged as not checked', ! is_wp_error( $pq2 ) && false === $pq2['verified'], json_encode( $pq2 ) );
+check( 'passage: unknown paragraph is an error', is_wp_error( AF_Service::passage( 'catechism', 99 ) ) );
+check( 'passage: PDF-only document is refused', is_wp_error( AF_Service::passage( 'amoris-laetitia', 5 ) ) && 'af_pdf' === AF_Service::passage( 'amoris-laetitia', 5 )->get_error_code() );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

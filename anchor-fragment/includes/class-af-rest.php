@@ -112,6 +112,27 @@ class AF_Rest {
 
 		register_rest_route(
 			'anchorfrag/v1',
+			'/passage',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( __CLASS__, 'handle_passage' ),
+				'permission_callback' => function () {
+					return current_user_can( 'edit_posts' );
+				},
+				'args'                => array(
+					'doc'     => array( 'required' => true, 'sanitize_callback' => 'sanitize_key' ),
+					'locator' => array(
+						'required'          => true,
+						'validate_callback' => function ( $v ) {
+							return (bool) preg_match( '/^[0-9]{1,4}$/', (string) $v );
+						},
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			'anchorfrag/v1',
 			'/match',
 			array(
 				'methods'             => 'GET',
@@ -144,6 +165,14 @@ class AF_Rest {
 	public static function handle_link( WP_REST_Request $req ) {
 		$refresh = (bool) $req['refresh'] && current_user_can( 'manage_options' );
 		$res     = AF_Service::link( $req['doc'], $req['locator'], $refresh );
+		return is_wp_error( $res ) ? $res : rest_ensure_response( $res );
+	}
+
+	public static function handle_passage( WP_REST_Request $req ) {
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( 60 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		}
+		$res = AF_Service::passage( $req['doc'], $req['locator'] );
 		return is_wp_error( $res ) ? $res : rest_ensure_response( $res );
 	}
 
@@ -212,6 +241,7 @@ class AF_Rest {
 			'ingest' => rest_url( 'anchorfrag/v1/ingest' ),
 			'status' => rest_url( 'anchorfrag/v1/status' ),
 			'check'  => rest_url( 'anchorfrag/v1/check' ),
+			'passage' => rest_url( 'anchorfrag/v1/passage' ),
 			'nonce' => wp_create_nonce( 'wp_rest' ),
 		);
 		?>
@@ -293,6 +323,22 @@ class AF_Rest {
 			<pre id="af-out" style="background:#fff;border:1px solid #ccd0d4;padding:1em;max-width:60em;white-space:pre-wrap"></pre>
 
 			<hr>
+			<h2>Insert a quotation (proof of concept)</h2>
+			<p>Choose a document and a paragraph number. The server fetches that one page from vatican.va, cuts out the paragraph and shows it as a block quote with its citation. Nothing is saved. "Checked" means the text found is the same paragraph the index was built from.</p>
+			<form id="af-quote-form">
+				<select name="doc">
+					<?php foreach ( AF_Service::registry() as $id => $d ) : ?>
+						<?php if ( false === stripos( (string) $d['url'], '.pdf' ) ) : ?>
+							<option value="<?php echo esc_attr( $id ); ?>"><?php echo esc_html( $d['title'] ); ?></option>
+						<?php endif; ?>
+					<?php endforeach; ?>
+				</select>
+				<input type="text" name="locator" value="1670" size="6" aria-label="Paragraph number">
+				<button class="button button-primary" type="submit">Show passage</button>
+			</form>
+			<div id="af-quote-out" style="margin-top:1em;max-width:50em"></div>
+
+			<hr>
 			<h2>Match posts</h2>
 			<p>Enter post IDs separated by commas. For each post, the plugin finds the quotations and works out which paragraph of which document each came from. Results are shown below and saved on the server. The first run fetches any documents not yet indexed, which can take about 15 seconds.</p>
 			<form id="af-match-form">
@@ -364,6 +410,36 @@ class AF_Rest {
 						.catch(function (err) { box.textContent = 'The check failed (' + err + ').'; chk.disabled = false; });
 				});
 			}
+
+			/* ---- insert a quotation ---- */
+			var qf = document.getElementById('af-quote-form');
+			qf.addEventListener('submit', function (e) {
+				e.preventDefault();
+				var box = document.getElementById('af-quote-out');
+				box.textContent = 'Fetching…';
+				var q = new URLSearchParams({ doc: qf.doc.value, locator: qf.locator.value });
+				fetch(cfg.passage + '?' + q.toString(), { headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' })
+					.then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+					.then(function (res) {
+						box.textContent = '';
+						if (!res.ok) { box.textContent = res.body.message || 'Request failed.'; return; }
+						var b = res.body;
+						var bq = document.createElement('blockquote');
+						bq.style.cssText = 'border-left:4px solid #ccd0d4;margin:0;padding:.5em 1em;background:#fff';
+						var p = document.createElement('p'); p.textContent = b.text; bq.appendChild(p);
+						var cite = document.createElement('p');
+						var a = document.createElement('a'); a.href = b.link; a.target = '_blank'; a.rel = 'noopener';
+						a.textContent = (b.short || b.title) + ' ' + b.locator;
+						cite.appendChild(document.createTextNode('— ')); cite.appendChild(a); bq.appendChild(cite);
+						box.appendChild(bq);
+						var info = document.createElement('p');
+						info.textContent = (b.verified ? 'Checked against the index: same paragraph.' : 'NOT checked: the text found does not match the indexed paragraph.') + ' ' + b.text.split(/\s+/).length + ' words, fetched in ' + b.fetch_ms + ' ms.';
+						box.appendChild(info);
+						var html = '<blockquote><p>' + b.text.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</p><p>— <a href="' + b.link.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '">' + (b.short || b.title) + ' ' + b.locator + '</a></p></blockquote>';
+						var ta = document.createElement('textarea'); ta.readOnly = true; ta.rows = 5; ta.style.width = '100%'; ta.value = html; box.appendChild(ta);
+					})
+					.catch(function (err) { box.textContent = 'Request failed (' + err + ').'; });
+			});
 
 			/* ---- build a link ---- */
 			var form = document.getElementById('af-form');
