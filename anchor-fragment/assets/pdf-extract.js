@@ -8,7 +8,7 @@
 }( typeof self !== 'undefined' ? self : this, function () {
 	'use strict';
 
-	var BODY_MIN = 12.5;   // pt; the body text is 13 pt
+	var BODY_MIN = 12.9;   // pt; the body text is 13 pt (headings are 12.8 or 12.5)
 	var SOFT = '­';   // marks a line-end hyphen that may or may not be part of the word
 
 	function sizeOf( it ) { return Math.hypot( it.transform[ 0 ], it.transform[ 1 ] ); }
