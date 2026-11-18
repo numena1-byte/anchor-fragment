@@ -43,7 +43,7 @@ class AF_Quote {
 		$label = self::label( $p['title'], $p['locator'] );
 		return '<blockquote class="' . self::CLASS_NAME . '" data-af-doc="' . self::e( $p['doc'] ) . '" data-af-locator="' . self::e( $p['locator'] ) . '">'
 			. $body
-			. '<footer class="af-quote__source">&mdash; <cite><a href="' . self::e( $p['link'] ) . '">' . self::e( $label ) . '</a></cite></footer>'
+			. '<footer class="af-quote__source">&mdash; <cite><a href="' . self::e( $p['link'] ) . '" target="_blank" rel="noopener">' . self::e( $label ) . '</a></cite></footer>'
 			. '</blockquote>';
 	}
 

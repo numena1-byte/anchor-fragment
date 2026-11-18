@@ -159,7 +159,7 @@ check( 'passage: fetched exactly one page', count( $GLOBALS['hits'] ) === $h0 + 
 check( 'passage: checked against the index', ! is_wp_error( $pq ) && true === $pq['verified'], json_encode( $pq ) );
 check( 'passage: a link is returned', ! is_wp_error( $pq ) && '' !== $pq['link'] );
 check( 'quote: standard blockquote with class, data attributes and a footer link', ! is_wp_error( $pq ) && 0 === strpos( $pq['html'], '<blockquote class="af-quote" data-af-doc="catechism" data-af-locator="3">' ) && false !== strpos( $pq['html'], '<footer class="af-quote__source">&mdash; <cite><a href="https://www.vatican.va/archive/ENG0015/__P2.HTM#:~:text=' ), $pq['html'] ?? '' );
-check( 'quote: footer reads document title and number', ! is_wp_error( $pq ) && false !== strpos( $pq['html'], '>Catechism of the Catholic Church, no. 3</a></cite></footer></blockquote>' ), $pq['html'] ?? '' );
+check( 'quote: footer reads document title and number', ! is_wp_error( $pq ) && false !== strpos( $pq['html'], '" target="_blank" rel="noopener">Catechism of the Catholic Church, no. 3</a></cite></footer></blockquote>' ), $pq['html'] ?? '' );
 $pk = array_column( AF_Quote::picker_docs(), 'id' );
 check( 'quote: the editor button lists the Catechism and Laudato si\' but not the PDF-only Amoris Laetitia', in_array( 'catechism', $pk, true ) && in_array( 'laudato-si', $pk, true ) && ! in_array( 'amoris-laetitia', $pk, true ), implode( ',', $pk ) );
 $ev = AF_Quote::render( array( 'doc' => 'x', 'title' => 'A "T" <b>', 'locator' => 1, 'text' => "One <i>&</i>\n\nTwo", 'link' => 'https://e.x/?a=1&b="2"' ) );
