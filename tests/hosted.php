@@ -43,7 +43,7 @@ function wp_safe_remote_get( $url, $args = array() ) {
 	return array( 'code' => 200, 'body' => $pages[ $name ], 'headers' => array( 'content-type' => 'text/html; charset=utf-8' ) );
 }
 function ingest_crawl( $id, $b = 25.0, $r = false, $s = false ) { return AF_Service::ingest_step( $id, $b, $r, $s, true ); }
-foreach ( array( 'parser', 'fragment', 'matcher', 'analyzer', 'service' ) as $f ) {
+foreach ( array( 'parser', 'fragment', 'matcher', 'analyzer', 'quote', 'service' ) as $f ) {
 	require AF_DIR . "includes/class-af-$f.php";
 }
 

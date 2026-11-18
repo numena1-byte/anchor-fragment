@@ -624,7 +624,7 @@ class AF_Service {
 			$verified = $sc['coverage'] >= 0.8 && in_array( $loc, $sc['locators'], true );
 		}
 		$link = self::link( $id, (string) $loc );
-		return array(
+		$out = array(
 			'doc'      => $id,
 			'title'    => $entry['title'],
 			'short'    => $entry['short'] ?? '',
@@ -634,6 +634,8 @@ class AF_Service {
 			'verified' => $verified,
 			'fetch_ms' => (int) round( ( microtime( true ) - $t0 ) * 1000 ),
 		);
+		$out['html'] = AF_Quote::render( $out );
+		return $out;
 	}
 
 	/* ------------------------------------------------------------------ multi-page documents */

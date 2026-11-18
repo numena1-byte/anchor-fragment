@@ -336,6 +336,7 @@ class AF_Rest {
 				<input type="text" name="locator" value="1670" size="6" aria-label="Paragraph number">
 				<button class="button button-primary" type="submit">Show passage</button>
 			</form>
+			<style><?php echo AF_Quote::css(); // phpcs:ignore WordPress.Security.EscapeOutput ?></style>
 			<div id="af-quote-out" style="margin-top:1em;max-width:50em"></div>
 
 			<hr>
@@ -424,19 +425,11 @@ class AF_Rest {
 						box.textContent = '';
 						if (!res.ok) { box.textContent = res.body.message || 'Request failed.'; return; }
 						var b = res.body;
-						var bq = document.createElement('blockquote');
-						bq.style.cssText = 'border-left:4px solid #ccd0d4;margin:0;padding:.5em 1em;background:#fff';
-						var p = document.createElement('p'); p.textContent = b.text; bq.appendChild(p);
-						var cite = document.createElement('p');
-						var a = document.createElement('a'); a.href = b.link; a.target = '_blank'; a.rel = 'noopener';
-						a.textContent = (b.short || b.title) + ' ' + b.locator;
-						cite.appendChild(document.createTextNode('— ')); cite.appendChild(a); bq.appendChild(cite);
-						box.appendChild(bq);
+						var wrap = document.createElement('div'); wrap.innerHTML = b.html; box.appendChild(wrap);
 						var info = document.createElement('p');
 						info.textContent = (b.verified ? 'Checked against the index: same paragraph.' : 'NOT checked: the text found does not match the indexed paragraph.') + ' ' + b.text.split(/\s+/).length + ' words, fetched in ' + b.fetch_ms + ' ms.';
 						box.appendChild(info);
-						var html = '<blockquote><p>' + b.text.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</p><p>— <a href="' + b.link.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '">' + (b.short || b.title) + ' ' + b.locator + '</a></p></blockquote>';
-						var ta = document.createElement('textarea'); ta.readOnly = true; ta.rows = 5; ta.style.width = '100%'; ta.value = html; box.appendChild(ta);
+						var ta = document.createElement('textarea'); ta.readOnly = true; ta.rows = 6; ta.style.width = '100%'; ta.value = b.html; box.appendChild(ta);
 					})
 					.catch(function (err) { box.textContent = 'Request failed (' + err + ').'; });
 			});

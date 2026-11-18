@@ -2,7 +2,7 @@
 // The hosted files in data/ against the real registry. Usage: php realdata.php <path-to-plugin-dir>
 $GLOBALS['af_plugin_dir'] = $argv[1];
 require __DIR__ . '/stubs.php';
-foreach ( array( 'parser', 'fragment', 'matcher', 'analyzer', 'service' ) as $f ) { require AF_DIR . "includes/class-af-$f.php"; }
+foreach ( array( 'parser', 'fragment', 'matcher', 'analyzer', 'quote', 'service' ) as $f ) { require AF_DIR . "includes/class-af-$f.php"; }
 $root = dirname( __DIR__ ) . '/data/';
 foreach ( AF_Service::registry() as $id => $e ) {
 	if ( empty( $e['hosted'] ) ) { continue; }

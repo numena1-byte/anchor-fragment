@@ -41,7 +41,7 @@ function wp_safe_remote_get( $url, $args = array() ) {
 	return array( 'code' => 200, 'body' => $pages[ $name ], 'headers' => array( 'content-type' => 'text/html; charset=utf-8' ) );
 }
 
-foreach ( array( 'parser', 'fragment', 'matcher', 'analyzer', 'service' ) as $f ) {
+foreach ( array( 'parser', 'fragment', 'matcher', 'analyzer', 'quote', 'service' ) as $f ) {
 	require $dir . "/includes/class-af-$f.php";
 }
 
@@ -158,6 +158,10 @@ check( 'passage: returns paragraph 3 in full, footnote mark removed', ! is_wp_er
 check( 'passage: fetched exactly one page', count( $GLOBALS['hits'] ) === $h0 + 1, (string) ( count( $GLOBALS['hits'] ) - $h0 ) );
 check( 'passage: checked against the index', ! is_wp_error( $pq ) && true === $pq['verified'], json_encode( $pq ) );
 check( 'passage: a link is returned', ! is_wp_error( $pq ) && '' !== $pq['link'] );
+check( 'quote: standard blockquote with class, data attributes and a footer link', ! is_wp_error( $pq ) && 0 === strpos( $pq['html'], '<blockquote class="af-quote" data-af-doc="catechism" data-af-locator="3">' ) && false !== strpos( $pq['html'], '<footer class="af-quote__source">&mdash; <cite><a href="https://www.vatican.va/archive/ENG0015/__P2.HTM#:~:text=' ), $pq['html'] ?? '' );
+check( 'quote: footer reads document title and number', ! is_wp_error( $pq ) && false !== strpos( $pq['html'], '>Catechism of the Catholic Church, no. 3</a></cite></footer></blockquote>' ), $pq['html'] ?? '' );
+$ev = AF_Quote::render( array( 'doc' => 'x', 'title' => 'A "T" <b>', 'locator' => 1, 'text' => "One <i>&</i>\n\nTwo", 'link' => 'https://e.x/?a=1&b="2"' ) );
+check( 'quote: text, title and link are escaped; blank line makes two paragraphs', false === strpos( $ev, '<i>' ) && false === strpos( $ev, '<b>' ) && false !== strpos( $ev, '<p>One &lt;i&gt;&amp;&lt;/i&gt;</p><p>Two</p>' ) && false !== strpos( $ev, 'a=1&amp;b=&quot;2&quot;' ), $ev );
 $pages['__P2.HTM'] = str_replace( 'something plain about page 2 and its neighbours', 'quite another thing entirely about wholly different matters', $pages['__P2.HTM'] );
 $pq2 = AF_Service::passage( 'catechism', 3 );
 check( 'passage: changed source text is flagged as not checked', ! is_wp_error( $pq2 ) && false === $pq2['verified'], json_encode( $pq2 ) );
