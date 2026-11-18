@@ -3,8 +3,9 @@
  * Finds which paragraph a quotation came from, using an index of hashed word runs.
  *
  * Every paragraph is cut into overlapping runs of K words. Each run is hashed and the
- * hash is stored against the paragraph number, so the index can find a quotation but
- * cannot be turned back into the document. A quotation is cut into runs the same way,
+ * hash is stored against the paragraph number, so the index holds no text and cannot be
+ * read as text. It is not proof against a determined attacker: someone who knows a few
+ * words of a paragraph can guess the next word and walk along it. A quotation is cut into runs the same way,
  * and the share of its runs found in a paragraph is its "coverage". Pure PHP, no
  * WordPress functions.
  */
