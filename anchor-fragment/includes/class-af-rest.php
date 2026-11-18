@@ -336,7 +336,7 @@ class AF_Rest {
 				<input type="text" name="locator" value="1670" size="6" aria-label="Paragraph number">
 				<button class="button button-primary" type="submit">Show passage</button>
 			</form>
-			<style><?php echo AF_Quote::css(); // phpcs:ignore WordPress.Security.EscapeOutput ?></style>
+			<style><?php echo AF_Quote::admin_preview_css() . AF_Quote::css(); // phpcs:ignore WordPress.Security.EscapeOutput ?></style>
 			<div id="af-quote-out" style="margin-top:1em;max-width:50em"></div>
 
 			<hr>

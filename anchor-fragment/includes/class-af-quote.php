@@ -47,12 +47,18 @@ class AF_Quote {
 			. '</blockquote>';
 	}
 
-	/** Small stylesheet; themes can override every rule. */
+	/**
+	 * Layout only: no border, quote mark or colour, so the theme's own blockquote style is the one that shows.
+	 * The source line is set a little smaller than the quotation.
+	 */
 	public static function css() {
-		return 'blockquote.af-quote{margin:1.5em 0;padding:.25em 0 .25em 1.25em;border-left:4px solid currentColor;border-left-color:rgba(128,128,128,.45)}'
-			. 'blockquote.af-quote p{margin:0 0 .75em}'
-			. 'blockquote.af-quote .af-quote__source{font-size:.875em;opacity:.85}'
+		return 'blockquote.af-quote .af-quote__source{display:block;font-size:.875em;opacity:.85}'
 			. 'blockquote.af-quote .af-quote__source cite{font-style:normal}';
+	}
+
+	/** Stand-in for a theme's blockquote style, used only on the admin test page where no theme CSS is loaded. */
+	public static function admin_preview_css() {
+		return 'blockquote.af-quote{margin:1.5em 0;padding:.25em 0 .25em 1.25em;border-left:4px solid #ccd0d4}blockquote.af-quote p{margin:0 0 .75em}';
 	}
 
 	public static function init() {
