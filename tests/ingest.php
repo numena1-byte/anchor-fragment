@@ -168,7 +168,7 @@ $pages['__P2.HTM'] = str_replace( 'something plain about page 2 and its neighbou
 $pq2 = AF_Service::passage( 'catechism', 3 );
 check( 'passage: changed source text is flagged as not checked', ! is_wp_error( $pq2 ) && false === $pq2['verified'], json_encode( $pq2 ) );
 check( 'passage: unknown paragraph is an error', is_wp_error( AF_Service::passage( 'catechism', 99 ) ) );
-check( 'passage: PDF-only document is refused', is_wp_error( AF_Service::passage( 'amoris-laetitia', 5 ) ) && 'af_pdf' === AF_Service::passage( 'amoris-laetitia', 5 )->get_error_code() );
+check( 'passage: PDF-only document gives an error (the added-text case is tested in pdftext.php)', is_wp_error( AF_Service::passage( 'amoris-laetitia', 5 ) ) );
 
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

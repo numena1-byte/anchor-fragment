@@ -18,6 +18,7 @@ class AF_Rest {
 	public static function init() {
 		add_action( 'rest_api_init', array( __CLASS__, 'register_routes' ) );
 		add_action( 'admin_menu', array( __CLASS__, 'add_page' ) );
+		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_page' ) );
 		add_action( 'admin_post_af_export', array( __CLASS__, 'handle_export' ) );
 		add_action( 'admin_post_af_import_file', array( __CLASS__, 'handle_import_file' ) );
 	}
@@ -133,6 +134,40 @@ class AF_Rest {
 
 		register_rest_route(
 			'anchorfrag/v1',
+			'/doctext',
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( __CLASS__, 'handle_text_info' ),
+					'permission_callback' => function () {
+						return current_user_can( 'manage_options' );
+					},
+					'args'                => array( 'doc' => array( 'required' => true, 'sanitize_callback' => 'sanitize_key' ) ),
+				),
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( __CLASS__, 'handle_text_add' ),
+					'permission_callback' => function () {
+						return current_user_can( 'manage_options' );
+					},
+					'args'                => array(
+						'doc'        => array( 'required' => true, 'sanitize_callback' => 'sanitize_key' ),
+						'paragraphs' => array( 'required' => true ),
+					),
+				),
+				array(
+					'methods'             => 'DELETE',
+					'callback'            => array( __CLASS__, 'handle_text_clear' ),
+					'permission_callback' => function () {
+						return current_user_can( 'manage_options' );
+					},
+					'args'                => array( 'doc' => array( 'required' => true, 'sanitize_callback' => 'sanitize_key' ) ),
+				),
+			)
+		);
+
+		register_rest_route(
+			'anchorfrag/v1',
 			'/match',
 			array(
 				'methods'             => 'GET',
@@ -174,6 +209,25 @@ class AF_Rest {
 		}
 		$res = AF_Service::passage( $req['doc'], $req['locator'] );
 		return is_wp_error( $res ) ? $res : rest_ensure_response( $res );
+	}
+
+	public static function handle_text_info( WP_REST_Request $req ) {
+		$res = AF_Service::text_info( $req['doc'] );
+		return is_wp_error( $res ) ? $res : rest_ensure_response( $res );
+	}
+
+	public static function handle_text_add( WP_REST_Request $req ) {
+		$p = $req['paragraphs'];
+		if ( ! is_array( $p ) ) {
+			return new WP_Error( 'af_bad_request', 'paragraphs must be an object of paragraph number => text.', array( 'status' => 400 ) );
+		}
+		$res = AF_Service::accept_text( $req['doc'], $p );
+		return is_wp_error( $res ) ? $res : rest_ensure_response( $res );
+	}
+
+	public static function handle_text_clear( WP_REST_Request $req ) {
+		AF_Service::clear_text( $req['doc'] );
+		return rest_ensure_response( array( 'cleared' => true ) );
 	}
 
 	public static function handle_match( WP_REST_Request $req ) {
@@ -228,6 +282,28 @@ class AF_Rest {
 		}
 		wp_safe_redirect( add_query_arg( array( 'page' => 'af-test', 'af_notice' => rawurlencode( $msg ), 'af_ok' => $ok ? 1 : 0 ), admin_url( 'tools.php' ) ) );
 		exit;
+	}
+
+	/** Script for the "Add text from a PDF" section; PDF.js itself is loaded by that script when a file is chosen. */
+	public static function enqueue_page( $hook ) {
+		if ( 'tools_page_af-test' !== $hook || ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		$base = plugins_url( 'assets/', AF_DIR . 'anchor-fragment.php' );
+		wp_enqueue_script( 'af-pdf-extract', $base . 'pdf-extract.js', array(), AF_VERSION, true );
+		wp_enqueue_script( 'af-add-pdf-text', $base . 'add-pdf-text.js', array( 'af-pdf-extract' ), AF_VERSION, true );
+		wp_add_inline_script(
+			'af-add-pdf-text',
+			'window.afPdf = ' . wp_json_encode(
+				array(
+					'rest'   => rest_url( 'anchorfrag/v1/doctext' ),
+					'nonce'  => wp_create_nonce( 'wp_rest' ),
+					'pdfjs'  => $base . 'pdfjs/pdf.min.js',
+					'worker' => $base . 'pdfjs/pdf.worker.min.js',
+				)
+			) . ';',
+			'before'
+		);
 	}
 
 	public static function add_page() {
@@ -338,6 +414,25 @@ class AF_Rest {
 			</form>
 			<style><?php echo AF_Quote::admin_preview_css() . AF_Quote::css(); // phpcs:ignore WordPress.Security.EscapeOutput ?></style>
 			<div id="af-quote-out" style="margin-top:1em;max-width:50em"></div>
+
+			<hr>
+			<h2>Add text from a PDF</h2>
+			<p>For documents that exist only as a PDF. Download the PDF from the link, choose the file here, and give the paragraph numbers you want. The PDF is read in your browser and never uploaded. Each paragraph is checked word for word against the index and kept on this site only if it agrees.</p>
+			<form id="af-pdf-form">
+				<select name="doc">
+					<?php foreach ( AF_Service::registry() as $id => $d ) : ?>
+						<?php if ( false !== stripos( (string) $d['url'], '.pdf' ) ) : ?>
+							<option value="<?php echo esc_attr( $id ); ?>"><?php echo esc_html( $d['title'] ); ?></option>
+						<?php endif; ?>
+					<?php endforeach; ?>
+				</select>
+				<a id="af-pdf-link" href="#" target="_blank" rel="noopener">Open the PDF source</a><br>
+				<input type="file" name="file" accept="application/pdf,.pdf">
+				Paragraphs <input type="text" name="from" value="291" size="4" aria-label="First paragraph"> to <input type="text" name="to" value="312" size="4" aria-label="Last paragraph">
+				<button class="button button-primary" type="submit">Read PDF and add text</button>
+				<button class="button" type="button" id="af-pdf-clear">Remove added text</button>
+			</form>
+			<pre id="af-pdf-out" style="white-space:pre-wrap;max-width:60em"></pre>
 
 			<hr>
 			<h2>Match posts</h2>

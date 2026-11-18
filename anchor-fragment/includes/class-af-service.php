@@ -589,17 +589,37 @@ class AF_Service {
 		if ( ! isset( $reg[ $id ] ) ) {
 			return new WP_Error( 'af_unknown_doc', 'Unknown document id: ' . $id, array( 'status' => 404 ) );
 		}
-		$entry = $reg[ $id ];
-		if ( false !== stripos( (string) $entry['url'], '.pdf' ) ) {
-			return new WP_Error( 'af_pdf', $entry['title'] . ' exists only as a PDF, and reading text from a PDF is not built yet.', array( 'status' => 501 ) );
-		}
-		$loc = (int) $locator;
-		$doc = self::get_doc( $id );
+		$entry  = $reg[ $id ];
+		$is_pdf = false !== stripos( (string) $entry['url'], '.pdf' );
+		$loc    = (int) $locator;
+		$doc    = self::get_doc( $id );
 		if ( is_wp_error( $doc ) ) {
 			return $doc;
 		}
 		if ( ! isset( $doc['paras'][ $loc ] ) ) {
 			return new WP_Error( 'af_no_paragraph', 'No paragraph ' . $loc . ' in ' . $entry['title'] . '.', array( 'status' => 404 ) );
+		}
+		if ( $is_pdf ) {
+			// A PDF cannot be read on the server. The text is whatever an author added from the PDF on this site,
+			// each paragraph checked against the index when it was added.
+			$stored = self::stored_text( $id );
+			if ( ! isset( $stored[ $loc ] ) ) {
+				return new WP_Error( 'af_pdf_text', $entry['title'] . ' is a PDF. The text of paragraph ' . $loc . ' has not been added on this site (Tools > Anchor Fragment Test > Add text from a PDF).', array( 'status' => 404 ) );
+			}
+			$link = self::link( $id, (string) $loc );
+			$out  = array(
+				'doc'      => $id,
+				'title'    => $entry['title'],
+				'short'    => $entry['short'] ?? '',
+				'locator'  => $loc,
+				'text'     => $stored[ $loc ],
+				'link'     => is_wp_error( $link ) ? $entry['url'] : $link['link'],
+				'verified' => true,
+				'source'   => 'stored',
+				'fetch_ms' => 0,
+			);
+			$out['html'] = AF_Quote::render( $out );
+			return $out;
 		}
 		$url = ! empty( $doc['paras'][ $loc ]['url'] ) ? $doc['paras'][ $loc ]['url'] : $entry['url'];
 		$t0  = microtime( true );
@@ -636,6 +656,121 @@ class AF_Service {
 		);
 		$out['html'] = AF_Quote::render( $out );
 		return $out;
+	}
+
+	/* ------------------------------------------------------------------ text added from a PDF */
+
+	const SOFT_HYPHEN = "\xC2\xAD";
+	const TEXT_MAX    = 400;
+
+	/** Paragraph text an author added on this site from a PDF: loc => text. Only text that passed the index check is kept. */
+	public static function stored_text( $id ) {
+		$t = get_option( 'af_text_' . $id );
+		return is_array( $t ) ? $t : array();
+	}
+
+	public static function clear_text( $id ) {
+		delete_option( 'af_text_' . $id );
+	}
+
+	/**
+	 * Check paragraphs read from a PDF (in the author's browser) against the index and keep those that agree with it
+	 * word for word. A line-end hyphen that may belong to the word arrives marked with a soft hyphen; the form that
+	 * the index agrees with is used.
+	 *
+	 * @param array $paras loc => text
+	 * @return array|WP_Error { accepted[], rejected[ { loc, reason } ], stored }
+	 */
+	public static function accept_text( $id, array $paras ) {
+		$reg = self::registry();
+		if ( ! isset( $reg[ $id ] ) ) {
+			return new WP_Error( 'af_unknown_doc', 'Unknown document id: ' . $id, array( 'status' => 404 ) );
+		}
+		if ( count( $paras ) > self::TEXT_MAX ) {
+			return new WP_Error( 'af_too_many', 'At most ' . self::TEXT_MAX . ' paragraphs at a time.', array( 'status' => 400 ) );
+		}
+		$idx = self::load_index( $id );
+		if ( ! is_array( $idx ) ) {
+			return new WP_Error( 'af_no_index', 'This document has no index yet; import it first.', array( 'status' => 409 ) );
+		}
+		$locs   = array_map( 'intval', array_keys( $paras ) );
+		$counts = AF_Matcher::index_runs( $idx, $locs );
+		$stored = self::stored_text( $id );
+		$acc    = array();
+		$rej    = array();
+		foreach ( $paras as $k => $text ) {
+			$loc = (int) $k;
+			if ( ! is_string( $text ) || strlen( $text ) > 30000 || $loc < 1 ) {
+				$rej[] = array( 'loc' => $loc, 'reason' => 'not usable text' );
+				continue;
+			}
+			$text  = preg_replace( '/[\x00-\x08\x0B\x0C\x0E-\x1F]/', '', $text );
+			$parts = explode( self::SOFT_HYPHEN, $text );
+			if ( count( $parts ) > 40 ) {
+				$rej[] = array( 'loc' => $loc, 'reason' => 'too many line-end hyphens' );
+				continue;
+			}
+			// Start with every line-end hyphen removed, then keep a hyphen where that makes more of the words agree with the index.
+			$use  = array_fill( 1, max( 0, count( $parts ) - 1 ), false );
+			$make = function ( array $use ) use ( $parts ) {
+				$t = $parts[0];
+				for ( $i = 1; $i < count( $parts ); $i++ ) {
+					$t .= ( $use[ $i ] ? '-' : '' ) . $parts[ $i ];
+				}
+				return trim( preg_replace( '/\s+/u', ' ', $t ) );
+			};
+			$best = AF_Matcher::check_paragraph( AF_Matcher::tokens( $make( $use ) ), $idx, $loc );
+			for ( $i = 1; $i < count( $parts ); $i++ ) {
+				$try        = $use;
+				$try[ $i ]  = true;
+				$r          = AF_Matcher::check_paragraph( AF_Matcher::tokens( $make( $try ) ), $idx, $loc );
+				if ( $r['found'] > $best['found'] || ( $r['found'] === $best['found'] && $r['runs'] < $best['runs'] ) ) {
+					$use  = $try;
+					$best = $r;
+				}
+			}
+			$final = $make( $use );
+			if ( $best['runs'] < 1 ) {
+				$rej[] = array( 'loc' => $loc, 'reason' => 'too short to check' );
+			} elseif ( $best['found'] < $best['runs'] ) {
+				$rej[] = array( 'loc' => $loc, 'reason' => ( $best['runs'] - $best['found'] ) . ' of ' . $best['runs'] . ' word runs differ from the index' );
+			} elseif ( ! empty( $counts[ $loc ] ) && $best['runs'] < 0.98 * $counts[ $loc ] ) {
+				$rej[] = array( 'loc' => $loc, 'reason' => 'incomplete: ' . $best['runs'] . ' of ' . $counts[ $loc ] . ' word runs' );
+			} else {
+				$stored[ $loc ] = $final;
+				$acc[]          = $loc;
+			}
+		}
+		if ( $acc ) {
+			ksort( $stored );
+			update_option( 'af_text_' . $id, $stored, false );
+		}
+		return array( 'accepted' => $acc, 'rejected' => $rej, 'stored' => count( $stored ) );
+	}
+
+	/** What the "Add text from a PDF" form needs: the PDF address, the page of each paragraph and what is stored. */
+	public static function text_info( $id ) {
+		$reg = self::registry();
+		if ( ! isset( $reg[ $id ] ) ) {
+			return new WP_Error( 'af_unknown_doc', 'Unknown document id: ' . $id, array( 'status' => 404 ) );
+		}
+		$doc = self::get_doc( $id );
+		if ( is_wp_error( $doc ) ) {
+			return $doc;
+		}
+		$pages = array();
+		foreach ( $doc['paras'] as $loc => $p ) {
+			if ( ! empty( $p['page'] ) ) {
+				$pages[ $loc ] = (int) $p['page'];
+			}
+		}
+		return array(
+			'doc'    => $id,
+			'title'  => $reg[ $id ]['title'],
+			'url'    => $reg[ $id ]['url'],
+			'pages'  => $pages,
+			'stored' => array_keys( self::stored_text( $id ) ),
+		);
 	}
 
 	/* ------------------------------------------------------------------ multi-page documents */
@@ -1006,6 +1141,7 @@ class AF_Service {
 				'multipage' => ! empty( $entry['multipage'] ),
 				'hosted'    => ! empty( $entry['hosted'] ),
 				'pdf'       => false !== stripos( (string) ( $entry['url'] ?? '' ), '.pdf' ),
+				'text'      => count( self::stored_text( $id ) ),
 				'expected'  => $entry['expected_count'] ?? null,
 				'indexed'   => self::has_index( $id ),
 				'count'     => is_array( $doc ) ? (int) $doc['meta']['stats']['count'] : null,

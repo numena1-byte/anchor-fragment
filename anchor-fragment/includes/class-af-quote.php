@@ -67,12 +67,17 @@ class AF_Quote {
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_editor' ) );
 	}
 
-	/** Documents the button offers: those whose text can be read from a web page (not PDF-only ones). */
+	/** Documents the button offers: those read from a web page, and PDF-only ones once text has been added for some paragraphs. */
 	public static function picker_docs() {
 		$docs = array();
 		foreach ( AF_Service::registry() as $id => $d ) {
 			if ( false === stripos( (string) $d['url'], '.pdf' ) ) {
 				$docs[] = array( 'id' => $id, 'title' => $d['title'] );
+			} else {
+				$n = count( AF_Service::stored_text( $id ) );
+				if ( $n > 0 ) {
+					$docs[] = array( 'id' => $id, 'title' => $d['title'] . ' (' . $n . ' paragraphs added from the PDF)' );
+				}
 			}
 		}
 		return $docs;

@@ -142,4 +142,40 @@ class AF_Matcher {
 			'top'      => array_slice( $counts, 0, 5, true ),
 		);
 	}
+
+	/**
+	 * How well a candidate text fits one paragraph of the index: how many of its distinct runs the index
+	 * lists under that paragraph.
+	 *
+	 * @param string[] $tokens Tokens of the candidate text.
+	 * @return array { runs, found }
+	 */
+	public static function check_paragraph( array $tokens, array $idx, $loc ) {
+		$runs  = array_unique( self::hashes( $tokens ) );
+		$found = 0;
+		foreach ( $runs as $h ) {
+			if ( isset( $idx[ $h ] ) && ( $idx[ $h ] === $loc || ( is_array( $idx[ $h ] ) && in_array( $loc, $idx[ $h ], true ) ) ) ) {
+				$found++;
+			}
+		}
+		return array( 'runs' => count( $runs ), 'found' => $found );
+	}
+
+	/**
+	 * Number of runs the index lists for each of the given paragraphs.
+	 *
+	 * @param int[] $locs
+	 * @return array loc => count
+	 */
+	public static function index_runs( array $idx, array $locs ) {
+		$want = array_fill_keys( $locs, 0 );
+		foreach ( $idx as $v ) {
+			foreach ( (array) $v as $n ) {
+				if ( isset( $want[ $n ] ) ) {
+					$want[ $n ]++;
+				}
+			}
+		}
+		return $want;
+	}
 }
