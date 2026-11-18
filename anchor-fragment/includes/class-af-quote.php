@@ -57,6 +57,44 @@ class AF_Quote {
 
 	public static function init() {
 		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue' ) );
+		add_action( 'media_buttons', array( __CLASS__, 'editor_button' ) );
+		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_editor' ) );
+	}
+
+	/** Documents the button offers: those whose text can be read from a web page (not PDF-only ones). */
+	public static function picker_docs() {
+		$docs = array();
+		foreach ( AF_Service::registry() as $id => $d ) {
+			if ( false === stripos( (string) $d['url'], '.pdf' ) ) {
+				$docs[] = array( 'id' => $id, 'title' => $d['title'] );
+			}
+		}
+		return $docs;
+	}
+
+	/** The button above the classic editor. */
+	public static function editor_button() {
+		if ( current_user_can( 'edit_posts' ) ) {
+			echo '<button type="button" class="button af-insert-quote">Insert quotation</button>';
+		}
+	}
+
+	public static function enqueue_editor( $hook ) {
+		if ( ! in_array( $hook, array( 'post.php', 'post-new.php' ), true ) || ! current_user_can( 'edit_posts' ) ) {
+			return;
+		}
+		wp_enqueue_script( 'af-insert-quote', plugins_url( 'assets/insert-quote.js', AF_DIR . 'anchor-fragment.php' ), array(), AF_VERSION, true );
+		wp_add_inline_script(
+			'af-insert-quote',
+			'window.afQuote = ' . wp_json_encode(
+				array(
+					'rest'  => rest_url( 'anchorfrag/v1/passage' ),
+					'nonce' => wp_create_nonce( 'wp_rest' ),
+					'docs'  => self::picker_docs(),
+				)
+			) . ';',
+			'before'
+		);
 	}
 
 	public static function enqueue() {

@@ -187,5 +187,18 @@ check( '17a "Familiaris Consortio, no. 3" is not a number of the Test Document -
 $q = run1( $an, $get, '<p>Earlier: Test Document 4. Then, as it says (Test Document, no. 4), we read:</p><blockquote>' . $bread . '</blockquote>' );
 check( '17b a number read as a named cite is not read twice', 'high' === $q[0]['status'] && 1 === count( $q[0]['typed'] ), json_encode( $q[0]['typed'] ) );
 
+
+// Quotations inserted by the plugin carry the paragraph they are meant to be.
+$tdp4 = $doc_a[3];
+$mk   = function ( $doc, $loc, $text ) { return '<blockquote class="af-quote" data-af-doc="' . $doc . '" data-af-locator="' . $loc . '"><p>' . $text . '</p><footer class="af-quote__source">&mdash; <cite><a href="https://x.example/">Some Title, no. ' . $loc . '</a></cite></footer></blockquote>'; };
+$q = run1( $an, $get, $mk( 'test-document', 4, $tdp4 ) );
+check( '18a inserted quote, text agrees with declared paragraph -> high, declared paragraph recorded', 1 === count( $q ) && 'high' === $q[0]['status'] && 'test-document' === $q[0]['typed'][0]['doc'] && array( 4 ) === $q[0]['typed'][0]['loc'], json_encode( $q ) );
+$q = run1( $an, $get, $mk( 'test-document', 6, $tdp4 ) );
+check( '18b inserted quote whose text is another paragraph than declared -> conflict', 'conflict' === $q[0]['status'], json_encode( $q ) );
+$q = run1( $an, $get, $mk( 'no-such-doc', 4, $tdp4 ) );
+check( '18c declared document not in the registry is ignored', 'conflict' !== $q[0]['status'], json_encode( $q ) );
+$q = run1( $an, $get, str_replace( 'class="af-quote" ', '', $mk( 'test-document', 6, $tdp4 ) ) );
+check( '18d data attributes without the af-quote class are ignored', 'conflict' !== $q[0]['status'], json_encode( $q ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

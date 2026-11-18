@@ -160,6 +160,8 @@ check( 'passage: checked against the index', ! is_wp_error( $pq ) && true === $p
 check( 'passage: a link is returned', ! is_wp_error( $pq ) && '' !== $pq['link'] );
 check( 'quote: standard blockquote with class, data attributes and a footer link', ! is_wp_error( $pq ) && 0 === strpos( $pq['html'], '<blockquote class="af-quote" data-af-doc="catechism" data-af-locator="3">' ) && false !== strpos( $pq['html'], '<footer class="af-quote__source">&mdash; <cite><a href="https://www.vatican.va/archive/ENG0015/__P2.HTM#:~:text=' ), $pq['html'] ?? '' );
 check( 'quote: footer reads document title and number', ! is_wp_error( $pq ) && false !== strpos( $pq['html'], '>Catechism of the Catholic Church, no. 3</a></cite></footer></blockquote>' ), $pq['html'] ?? '' );
+$pk = array_column( AF_Quote::picker_docs(), 'id' );
+check( 'quote: the editor button lists the Catechism and Laudato si\' but not the PDF-only Amoris Laetitia', in_array( 'catechism', $pk, true ) && in_array( 'laudato-si', $pk, true ) && ! in_array( 'amoris-laetitia', $pk, true ), implode( ',', $pk ) );
 $ev = AF_Quote::render( array( 'doc' => 'x', 'title' => 'A "T" <b>', 'locator' => 1, 'text' => "One <i>&</i>\n\nTwo", 'link' => 'https://e.x/?a=1&b="2"' ) );
 check( 'quote: text, title and link are escaped; blank line makes two paragraphs', false === strpos( $ev, '<i>' ) && false === strpos( $ev, '<b>' ) && false !== strpos( $ev, '<p>One &lt;i&gt;&amp;&lt;/i&gt;</p><p>Two</p>' ) && false !== strpos( $ev, 'a=1&amp;b=&quot;2&quot;' ), $ev );
 $pages['__P2.HTM'] = str_replace( 'something plain about page 2 and its neighbours', 'quite another thing entirely about wholly different matters', $pages['__P2.HTM'] );

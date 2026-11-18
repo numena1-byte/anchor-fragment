@@ -137,6 +137,10 @@ class AF_Analyzer {
 
 			// Citations the author typed.
 			$typed = $this->cites( $ctx );
+			// A quotation inserted by the plugin says which paragraph it is meant to be.
+			if ( ! empty( $q['declared'] ) && isset( $this->docs[ $q['declared']['doc'] ] ) ) {
+				$typed[] = array( 'doc' => $q['declared']['doc'], 'loc' => $q['declared']['loc'] );
+			}
 			foreach ( $this->bare_cites( $q['cite'] . ' ' . $q['after'] ) as $loc ) {
 				$doc = $carry;
 				if ( null === $doc && 1 === count( $hints ) ) {
@@ -532,6 +536,11 @@ class AF_Analyzer {
 				$c->parentNode->removeChild( $c );
 			}
 
+			$declared = null;
+			if ( preg_match( '/\baf-quote\b/', $bq->getAttribute( 'class' ) ) && $bq->hasAttribute( 'data-af-doc' ) && preg_match( '/^\d{1,4}$/', $bq->getAttribute( 'data-af-locator' ) ) ) {
+				$declared = array( 'doc' => $bq->getAttribute( 'data-af-doc' ), 'loc' => array( (int) $bq->getAttribute( 'data-af-locator' ) ) );
+			}
+
 			$paras = array();
 			$ps    = $xp->query( './/p', $bq );
 			if ( $ps->length ) {
@@ -551,7 +560,7 @@ class AF_Analyzer {
 				return '' !== trim( $p );
 			} ) );
 			if ( $paras ) {
-				$out[] = array( 'kind' => 'blockquote', 'paras' => $paras, 'cite' => trim( $cite ), 'lead' => $lead, 'after' => $after, 'hrefs' => $links );
+				$out[] = array( 'kind' => 'blockquote', 'paras' => $paras, 'cite' => trim( $cite ), 'lead' => $lead, 'after' => $after, 'hrefs' => $links, 'declared' => $declared );
 			}
 		}
 
