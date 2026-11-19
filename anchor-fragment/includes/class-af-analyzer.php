@@ -305,6 +305,7 @@ class AF_Analyzer {
 			$results[] = array(
 				'i'         => $n,
 				'kind'      => $q['kind'],
+				'hash'      => substr( sha1( AF_Parser::fold( $text ) ), 0, 16 ),
 				'excerpt'   => mb_substr( $text, 0, 110 ),
 				'words'     => $tokens,
 				'status'    => $status,

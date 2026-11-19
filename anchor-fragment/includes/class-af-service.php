@@ -235,9 +235,9 @@ class AF_Service {
 	 *
 	 * @return array|WP_Error
 	 */
-	public static function analyze_post( $post_id ) {
+	public static function analyze_post( $post_id, $check_caps = true ) {
 		$post = get_post( $post_id );
-		if ( ! $post || ! current_user_can( 'read_post', $post->ID ) ) {
+		if ( ! $post || ( $check_caps && ! current_user_can( 'read_post', $post->ID ) ) ) {
 			return new WP_Error( 'af_no_post', 'No such post: ' . (int) $post_id, array( 'status' => 404 ) );
 		}
 
@@ -294,6 +294,9 @@ class AF_Service {
 			'unindexed'      => $unindexed,
 		) + $res;
 		update_option( 'af_match_' . $post->ID, $res, false );
+		if ( class_exists( 'AF_Graph' ) ) {
+			AF_Graph::record_post( $post->ID, $res );
+		}
 		return $res;
 	}
 

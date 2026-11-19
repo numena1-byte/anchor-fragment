@@ -1,0 +1,349 @@
+<?php
+/**
+ * The citation graph: which post cites which paragraph of which document.
+ *
+ * One row of {prefix}af_citations is one edge: post -> (document, paragraph). The columns follow the draft AT Protocol
+ * record, so that a later step can publish them without reshaping:
+ *
+ *   post_id            -> post (the post's URL, later a strong reference)
+ *   doc, locator       -> anchor.document, anchor.locator
+ *   basis              -> basis   ("typed": the author cited it and the text agrees; "text-match": found by the words alone)
+ *   status             -> how sure the matcher is: high, medium, low, ambiguous, conflict, partial, unchecked
+ *   quote_hash         -> commentary.contentHash (a fingerprint of the quotation; no text is kept)
+ *   matched_at         -> matchedAt
+ *   confirmed          -> confirmed (NULL not reviewed, 1 yes, 0 no); kept when a post is matched again
+ *   at_uri             -> where the record was published, when it is
+ *
+ * No quotation text is stored here, only the address of the paragraph and how it was found.
+ */
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+class AF_Graph {
+
+	const DB_VERSION = '1';
+	const META_KEY   = '_af_matched';
+	/** Statuses that count as "the post cites this paragraph" unless a report asks for more or less. */
+	const CONFIDENT = array( 'high', 'medium' );
+
+	public static function table() {
+		global $wpdb;
+		return $wpdb->prefix . 'af_citations';
+	}
+
+	public static function post_types() {
+		return (array) apply_filters( 'af_graph_post_types', array( 'post', 'page' ) );
+	}
+
+	public static function init() {
+		add_action( 'plugins_loaded', array( __CLASS__, 'maybe_install' ) );
+		add_action( 'save_post', array( __CLASS__, 'on_save' ), 20, 2 );
+		add_action( 'af_match_post', array( __CLASS__, 'cron_match' ) );
+		add_action( 'before_delete_post', array( __CLASS__, 'forget_post' ) );
+	}
+
+	/* ------------------------------------------------------------------ table */
+
+	public static function maybe_install() {
+		if ( get_option( 'af_db_version' ) !== self::DB_VERSION ) {
+			self::install();
+		}
+	}
+
+	public static function install() {
+		global $wpdb;
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		$t       = self::table();
+		$charset = $wpdb->get_charset_collate();
+		dbDelta(
+			"CREATE TABLE {$t} (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  post_id bigint(20) unsigned NOT NULL,
+  quote_ord smallint(5) unsigned NOT NULL DEFAULT 0,
+  doc varchar(64) NOT NULL,
+  locator varchar(32) NOT NULL,
+  loc_num int(10) unsigned NOT NULL DEFAULT 0,
+  basis varchar(16) NOT NULL,
+  status varchar(16) NOT NULL,
+  cover float DEFAULT NULL,
+  words smallint(5) unsigned NOT NULL DEFAULT 0,
+  quote_hash char(16) NOT NULL DEFAULT '',
+  matched_at datetime NOT NULL,
+  plugin_version varchar(16) NOT NULL DEFAULT '',
+  confirmed tinyint(1) DEFAULT NULL,
+  at_uri varchar(255) DEFAULT NULL,
+  PRIMARY KEY  (id),
+  KEY post_id (post_id),
+  KEY anchor (doc,loc_num),
+  KEY status (status)
+) {$charset};"
+		);
+		update_option( 'af_db_version', self::DB_VERSION, false );
+	}
+
+	/* ------------------------------------------------------------------ recording */
+
+	/**
+	 * The edges one post's match result describes.
+	 *
+	 * @param array $res The result of AF_Analyzer::analyze() (with 'quotes').
+	 * @return array key => row
+	 */
+	public static function rows_from_result( array $res ) {
+		$rows = array();
+		$add  = function ( $q, $doc, $loc, $basis, $status, $cover ) use ( &$rows ) {
+			$hash = isset( $q['hash'] ) ? (string) $q['hash'] : '';
+			$key  = ( '' !== $hash ? $hash : 'q' . (int) $q['i'] ) . '|' . $doc . '|' . (int) $loc . '|' . $basis;
+			if ( isset( $rows[ $key ] ) ) {
+				return;
+			}
+			$rows[ $key ] = array(
+				'quote_ord'  => (int) $q['i'],
+				'doc'        => (string) $doc,
+				'locator'    => (string) (int) $loc,
+				'loc_num'    => (int) $loc,
+				'basis'      => $basis,
+				'status'     => $status,
+				'cover'      => $cover,
+				'words'      => (int) ( $q['words'] ?? 0 ),
+				'quote_hash' => $hash,
+			);
+		};
+		foreach ( (array) ( $res['quotes'] ?? array() ) as $q ) {
+			$status = $q['status'];
+			if ( ! empty( $q['best'] ) && in_array( $status, array( 'high', 'medium', 'low', 'ambiguous', 'conflict', 'partial' ), true ) ) {
+				foreach ( $q['best']['locators'] as $loc ) {
+					$add( $q, $q['best']['doc'], $loc, 'high' === $status ? 'typed' : 'text-match', $status, round( (float) $q['best']['coverage'], 3 ) );
+				}
+			}
+			// A citation the author typed is an edge even where the words could not confirm it.
+			foreach ( (array) ( $q['typed'] ?? array() ) as $t ) {
+				if ( empty( $t['doc'] ) || empty( $t['loc'] ) ) {
+					continue;
+				}
+				foreach ( $t['loc'] as $loc ) {
+					$add( $q, $t['doc'], $loc, 'typed', 'conflict' === $status ? 'conflict' : ( 'high' === $status ? 'high' : 'unchecked' ), null );
+				}
+			}
+		}
+		return $rows;
+	}
+
+	private static function key_of( $r ) {
+		return ( '' !== $r['quote_hash'] ? $r['quote_hash'] : 'q' . (int) $r['quote_ord'] ) . '|' . $r['doc'] . '|' . (int) $r['loc_num'] . '|' . $r['basis'];
+	}
+
+	/**
+	 * Replace what is recorded for a post with what its match result says. A review (confirmed) survives when the
+	 * same quotation still cites the same paragraph.
+	 *
+	 * @return array { added, updated, removed }
+	 */
+	public static function record_post( $post_id, array $res ) {
+		global $wpdb;
+		$t   = self::table();
+		$new = self::rows_from_result( $res );
+		$now = gmdate( 'Y-m-d H:i:s' );
+		$old = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$t} WHERE post_id = %d", (int) $post_id ), ARRAY_A );
+		$out = array( 'added' => 0, 'updated' => 0, 'removed' => 0 );
+		foreach ( (array) $old as $o ) {
+			$k = self::key_of( $o );
+			if ( isset( $new[ $k ] ) ) {
+				$r = $new[ $k ];
+				unset( $new[ $k ] );
+				$wpdb->update(
+					$t,
+					array(
+						'quote_ord'      => $r['quote_ord'],
+						'status'         => $r['status'],
+						'cover'          => $r['cover'],
+						'words'          => $r['words'],
+						'matched_at'     => $now,
+						'plugin_version' => AF_VERSION,
+					),
+					array( 'id' => (int) $o['id'] )
+				);
+				$out['updated']++;
+			} else {
+				$wpdb->delete( $t, array( 'id' => (int) $o['id'] ) );
+				$out['removed']++;
+			}
+		}
+		foreach ( $new as $r ) {
+			$wpdb->insert( $t, array( 'post_id' => (int) $post_id ) + $r + array( 'matched_at' => $now, 'plugin_version' => AF_VERSION ) );
+			$out['added']++;
+		}
+		update_post_meta( (int) $post_id, self::META_KEY, time() . ':' . AF_VERSION );
+		return $out;
+	}
+
+	public static function forget_post( $post_id ) {
+		global $wpdb;
+		$wpdb->delete( self::table(), array( 'post_id' => (int) $post_id ) );
+		delete_post_meta( (int) $post_id, self::META_KEY );
+	}
+
+	/** Matched with this plugin version after its last change? */
+	public static function is_fresh( $post_id, $modified_gmt ) {
+		$m = (string) get_post_meta( (int) $post_id, self::META_KEY, true );
+		if ( '' === $m || false === strpos( $m, ':' ) ) {
+			return false;
+		}
+		list( $ts, $ver ) = explode( ':', $m, 2 );
+		return AF_VERSION === $ver && (int) $ts >= (int) strtotime( $modified_gmt . ' UTC' );
+	}
+
+	/* ------------------------------------------------------------------ matching posts (batch and on save) */
+
+	/**
+	 * Match the next posts after the given ID. Call again with the returned 'last' until 'done'.
+	 *
+	 * @return array { processed, skipped, errors[], last, remaining, done, citations }
+	 */
+	public static function rebuild_step( $after = 0, $force = false, $budget = 20, $limit = 25 ) {
+		global $wpdb;
+		$types = self::post_types();
+		$in    = implode( ',', array_fill( 0, count( $types ), '%s' ) );
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT ID, post_modified_gmt FROM {$wpdb->posts} WHERE post_status = 'publish' AND post_type IN ({$in}) AND ID > %d ORDER BY ID ASC LIMIT %d",
+				array_merge( $types, array( (int) $after, (int) $limit ) )
+			),
+			ARRAY_A
+		);
+		$t0   = microtime( true );
+		$out  = array( 'processed' => 0, 'skipped' => 0, 'errors' => array(), 'last' => (int) $after, 'citations' => 0 );
+		foreach ( (array) $rows as $r ) {
+			if ( microtime( true ) - $t0 > $budget ) {
+				break;
+			}
+			$out['last'] = (int) $r['ID'];
+			if ( ! $force && self::is_fresh( $r['ID'], $r['post_modified_gmt'] ) ) {
+				$out['skipped']++;
+				continue;
+			}
+			$res = AF_Service::analyze_post( (int) $r['ID'], false );
+			if ( is_wp_error( $res ) ) {
+				$out['errors'][] = $r['ID'] . ': ' . $res->get_error_message();
+				continue;
+			}
+			$out['processed']++;
+		}
+		$out['remaining'] = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status = 'publish' AND post_type IN ({$in}) AND ID > %d",
+				array_merge( $types, array( $out['last'] ) )
+			)
+		);
+		$out['done'] = 0 === $out['remaining'];
+		return $out;
+	}
+
+	public static function on_save( $post_id, $post ) {
+		if ( ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) || wp_is_post_revision( $post_id ) || ! $post || 'publish' !== $post->post_status ) {
+			return;
+		}
+		if ( ! in_array( $post->post_type, self::post_types(), true ) || ! apply_filters( 'af_auto_match', true, $post_id ) ) {
+			return;
+		}
+		// Matching can take a few seconds, so it runs shortly after the save, not during it.
+		if ( ! wp_next_scheduled( 'af_match_post', array( (int) $post_id ) ) ) {
+			wp_schedule_single_event( time() + 15, 'af_match_post', array( (int) $post_id ) );
+		}
+	}
+
+	public static function cron_match( $post_id ) {
+		AF_Service::analyze_post( (int) $post_id, false );
+	}
+
+	/* ------------------------------------------------------------------ reading the graph */
+
+	/**
+	 * @param array $f Filters: doc, locator, status (array; default CONFIDENT), basis, post_id, confirmed ('yes'|'no'|'unreviewed').
+	 * @return array [ where-sql, args ]
+	 */
+	private static function where( array $f ) {
+		global $wpdb;
+		$w    = array( "p.post_status = 'publish'" );
+		$args = array();
+		$st   = ! empty( $f['status'] ) ? (array) $f['status'] : self::CONFIDENT;
+		if ( 'all' !== $st[0] ) {
+			$w[]  = 'c.status IN (' . implode( ',', array_fill( 0, count( $st ), '%s' ) ) . ')';
+			$args = array_merge( $args, array_values( $st ) );
+		}
+		foreach ( array( 'doc', 'basis' ) as $k ) {
+			if ( ! empty( $f[ $k ] ) ) {
+				$w[]    = "c.$k = %s";
+				$args[] = $f[ $k ];
+			}
+		}
+		if ( isset( $f['locator'] ) && '' !== $f['locator'] ) {
+			$w[]    = 'c.loc_num = %d';
+			$args[] = (int) $f['locator'];
+		}
+		if ( ! empty( $f['post_id'] ) ) {
+			$w[]    = 'c.post_id = %d';
+			$args[] = (int) $f['post_id'];
+		}
+		if ( ! empty( $f['confirmed'] ) ) {
+			$w[] = array( 'yes' => 'c.confirmed = 1', 'no' => 'c.confirmed = 0', 'unreviewed' => 'c.confirmed IS NULL' )[ $f['confirmed'] ] ?? '1=1';
+		}
+		return array( implode( ' AND ', $w ), $args );
+	}
+
+	private static function run( $sql, array $args, $filters_args = array() ) {
+		global $wpdb;
+		$all = array_merge( $filters_args, $args );
+		return $wpdb->get_results( $all ? $wpdb->prepare( $sql, $all ) : $sql, ARRAY_A );
+	}
+
+	/** Counts for the whole graph under the filters: edges, posts, paragraphs, and the split by document and by status. */
+	public static function summary( array $f = array() ) {
+		global $wpdb;
+		$t = self::table();
+		list( $w, $a ) = self::where( $f );
+		$from = "{$t} c JOIN {$wpdb->posts} p ON p.ID = c.post_id WHERE {$w}";
+		$tot  = self::run( "SELECT COUNT(*) AS edges, COUNT(DISTINCT c.post_id) AS posts FROM {$from}", array(), $a );
+		$par  = self::run( "SELECT COUNT(*) AS n FROM (SELECT DISTINCT c.doc, c.loc_num FROM {$from}) x", array(), $a );
+		$by   = self::run( "SELECT c.doc AS doc, COUNT(*) AS edges, COUNT(DISTINCT c.post_id) AS posts, COUNT(DISTINCT c.loc_num) AS paragraphs FROM {$from} GROUP BY c.doc ORDER BY posts DESC, c.doc", array(), $a );
+		// By status ignores the status filter: it shows what is there to filter.
+		$f2 = $f;
+		$f2['status'] = array( 'all' );
+		list( $w2, $a2 ) = self::where( $f2 );
+		$st = self::run( "SELECT c.status AS status, COUNT(*) AS edges FROM {$t} c JOIN {$wpdb->posts} p ON p.ID = c.post_id WHERE {$w2} GROUP BY c.status ORDER BY edges DESC", array(), $a2 );
+		$pm = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key = %s", self::META_KEY ) );
+		return array(
+			'edges'      => (int) $tot[0]['edges'],
+			'posts'      => (int) $tot[0]['posts'],
+			'paragraphs' => (int) $par[0]['n'],
+			'analyzed'   => $pm,
+			'by_doc'     => $by,
+			'by_status'  => $st,
+		);
+	}
+
+	/** The most cited paragraphs under the filters. */
+	public static function top_paragraphs( array $f = array(), $limit = 15 ) {
+		global $wpdb;
+		$t = self::table();
+		list( $w, $a ) = self::where( $f );
+		return self::run(
+			"SELECT c.doc AS doc, c.loc_num AS locator, COUNT(DISTINCT c.post_id) AS posts, COUNT(*) AS edges FROM {$t} c JOIN {$wpdb->posts} p ON p.ID = c.post_id WHERE {$w} GROUP BY c.doc, c.loc_num ORDER BY posts DESC, edges DESC, c.doc, c.loc_num LIMIT " . (int) $limit,
+			array(),
+			$a
+		);
+	}
+
+	/** Posts that cite a paragraph (or any paragraph of a document), newest first. */
+	public static function citing_posts( array $f, $limit = 100 ) {
+		global $wpdb;
+		$t = self::table();
+		list( $w, $a ) = self::where( $f );
+		return self::run(
+			"SELECT c.post_id AS post_id, p.post_title AS title, c.doc AS doc, c.locator AS locator, c.basis AS basis, c.status AS status, c.cover AS cover, c.confirmed AS confirmed, p.post_date AS date FROM {$t} c JOIN {$wpdb->posts} p ON p.ID = c.post_id WHERE {$w} ORDER BY p.post_date DESC, c.post_id DESC, c.doc, c.loc_num LIMIT " . (int) $limit,
+			array(),
+			$a
+		);
+	}
+}

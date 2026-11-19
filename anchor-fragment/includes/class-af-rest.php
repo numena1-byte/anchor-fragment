@@ -183,6 +183,58 @@ class AF_Rest {
 				),
 			)
 		);
+
+		register_rest_route(
+			'anchorfrag/v1',
+			'/graph/rebuild',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'handle_graph_rebuild' ),
+				'permission_callback' => function () {
+					return current_user_can( 'manage_options' );
+				},
+			)
+		);
+		register_rest_route(
+			'anchorfrag/v1',
+			'/graph',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( __CLASS__, 'handle_graph' ),
+				'permission_callback' => function () {
+					return current_user_can( 'edit_posts' );
+				},
+			)
+		);
+	}
+
+	public static function handle_graph_rebuild( WP_REST_Request $req ) {
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		}
+		AF_Graph::maybe_install();
+		return rest_ensure_response( AF_Graph::rebuild_step( (int) $req['after'], (bool) $req['force'], 20, 25 ) );
+	}
+
+	public static function handle_graph( WP_REST_Request $req ) {
+		AF_Graph::maybe_install();
+		$f = array();
+		foreach ( array( 'doc', 'locator', 'basis', 'confirmed' ) as $k ) {
+			if ( null !== $req[ $k ] && '' !== $req[ $k ] ) {
+				$f[ $k ] = sanitize_text_field( $req[ $k ] );
+			}
+		}
+		if ( $req['status'] ) {
+			$f['status'] = array_map( 'sanitize_key', explode( ',', (string) $req['status'] ) );
+		}
+		$out = array( 'summary' => AF_Graph::summary( $f ), 'top' => AF_Graph::top_paragraphs( $f, 15 ) );
+		if ( isset( $f['doc'] ) ) {
+			$out['posts'] = AF_Graph::citing_posts( $f, 100 );
+			foreach ( $out['posts'] as &$p ) {
+				$p['url'] = get_permalink( (int) $p['post_id'] );
+			}
+		}
+		return rest_ensure_response( $out );
 	}
 
 	public static function handle_status() {
@@ -318,6 +370,8 @@ class AF_Rest {
 			'status' => rest_url( 'anchorfrag/v1/status' ),
 			'check'  => rest_url( 'anchorfrag/v1/check' ),
 			'passage' => rest_url( 'anchorfrag/v1/passage' ),
+			'graph'   => rest_url( 'anchorfrag/v1/graph' ),
+			'rebuild' => rest_url( 'anchorfrag/v1/graph/rebuild' ),
 			'nonce' => wp_create_nonce( 'wp_rest' ),
 		);
 		?>
@@ -433,6 +487,24 @@ class AF_Rest {
 				<button class="button" type="button" id="af-pdf-clear">Remove added text</button>
 			</form>
 			<pre id="af-pdf-out" style="white-space:pre-wrap;max-width:60em"></pre>
+
+			<hr>
+			<h2>Citation graph</h2>
+			<p>Every post's matches are recorded as edges: post, document, paragraph, how it was found. "Match all posts" fills the graph from every published post (posts changed later are re-matched automatically a few seconds after saving). Filter below to see what cites what.</p>
+			<p><button class="button button-primary" id="af-rebuild">Match all posts</button>
+			<label><input type="checkbox" id="af-rebuild-force"> redo posts already matched</label>
+			<span id="af-rebuild-msg" style="margin-left:1em"></span></p>
+			<form id="af-graph-form">
+				Document <select name="doc"><option value="">all</option>
+				<?php foreach ( AF_Service::registry() as $id => $d ) : ?>
+					<option value="<?php echo esc_attr( $id ); ?>"><?php echo esc_html( $d['title'] ); ?></option>
+				<?php endforeach; ?>
+				</select>
+				Paragraph <input type="text" name="locator" size="6">
+				Confidence <select name="status"><option value="">high + medium</option><option value="high">high only</option><option value="high,medium,low,partial">+ low, partial</option><option value="all">everything</option></select>
+				<button class="button" type="submit">Show</button>
+			</form>
+			<div id="af-graph-out" style="margin-top:1em;max-width:70em"></div>
 
 			<hr>
 			<h2>Match posts</h2>
@@ -556,6 +628,72 @@ class AF_Rest {
 					})
 					.catch(function (err) { out.textContent = 'Request failed: ' + err; });
 			});
+
+			/* ---- citation graph ---- */
+			var rbtn = document.getElementById('af-rebuild');
+			var rmsg = document.getElementById('af-rebuild-msg');
+			rbtn.addEventListener('click', function () {
+				var tot = { processed: 0, skipped: 0, errors: [] };
+				var force = document.getElementById('af-rebuild-force').checked;
+				rbtn.disabled = true;
+				function step(after) {
+					fetch(cfg.rebuild + '?after=' + after + (force ? '&force=1' : ''), { method: 'POST', headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' })
+						.then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+						.then(function (res) {
+							var b = res.body;
+							if (!res.ok) { rmsg.textContent = 'Stopped: ' + (b.message || 'request failed') + ' Press the button to carry on.'; rbtn.disabled = false; return; }
+							tot.processed += b.processed; tot.skipped += b.skipped; tot.errors = tot.errors.concat(b.errors);
+							rmsg.textContent = 'Matched ' + tot.processed + ', already done ' + tot.skipped + ', ' + b.remaining + ' left' + (tot.errors.length ? ', ' + tot.errors.length + ' errors (' + tot.errors.slice(0, 3).join('; ') + ')' : '') + '.';
+							if (b.done) { rmsg.textContent += ' Finished.'; rbtn.disabled = false; showGraph(); return; }
+							step(b.last);
+						})
+						.catch(function (err) { rmsg.textContent = 'Request failed (' + err + '). Press the button to carry on.'; rbtn.disabled = false; });
+				}
+				step(0);
+			});
+			var gform = document.getElementById('af-graph-form');
+			var gout = document.getElementById('af-graph-out');
+			function table(head, rows) {
+				var t = el('table', null, 'border-collapse:collapse;margin:.5em 0 1em');
+				var tr = el('tr');
+				head.forEach(function (h) { tr.appendChild(el('th', h, 'text-align:left;padding:2px 12px 2px 0;border-bottom:1px solid #ccc')); });
+				t.appendChild(tr);
+				rows.forEach(function (r) {
+					var tr2 = el('tr');
+					r.forEach(function (c) {
+						var td = el('td', null, 'padding:2px 12px 2px 0');
+						if (c && c.href) { var a = el('a', c.text); a.href = c.href; a.target = '_blank'; a.rel = 'noopener'; td.appendChild(a); } else { td.textContent = c; }
+						tr2.appendChild(td);
+					});
+					t.appendChild(tr2);
+				});
+				return t;
+			}
+			function showGraph() {
+				var q = new URLSearchParams();
+				['doc', 'locator', 'status'].forEach(function (k) { if (gform[k].value) { q.set(k, gform[k].value); } });
+				gout.textContent = 'Loading…';
+				fetch(cfg.graph + '?' + q.toString(), { headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' })
+					.then(function (r) { return r.json(); })
+					.then(function (j) {
+						gout.textContent = '';
+						var s = j.summary;
+						gout.appendChild(el('p', s.edges + ' citations in ' + s.posts + ' posts, touching ' + s.paragraphs + ' paragraphs. Posts matched so far: ' + s.analyzed + '.'));
+						gout.appendChild(el('h3', 'By document'));
+						gout.appendChild(table(['Document', 'Posts', 'Paragraphs', 'Citations'], s.by_doc.map(function (r) { return [r.doc, r.posts, r.paragraphs, r.edges]; })));
+						gout.appendChild(el('h3', 'By confidence (all documents)'));
+						gout.appendChild(table(['Status', 'Citations'], s.by_status.map(function (r) { return [r.status, r.edges]; })));
+						gout.appendChild(el('h3', 'Most cited paragraphs'));
+						gout.appendChild(table(['Document', 'Paragraph', 'Posts'], j.top.map(function (r) { return [r.doc, r.locator, r.posts]; })));
+						if (j.posts) {
+							gout.appendChild(el('h3', 'Posts citing this selection'));
+							gout.appendChild(table(['Post', 'Document', 'Paragraph', 'How', 'Status'], j.posts.map(function (r) { return [{ text: r.title || ('#' + r.post_id), href: r.url }, r.doc, r.locator, r.basis, r.status]; })));
+						}
+					})
+					.catch(function (err) { gout.textContent = 'Request failed (' + err + ').'; });
+			}
+			gform.addEventListener('submit', function (e) { e.preventDefault(); showGraph(); });
+			showGraph();
 
 			/* ---- match posts ---- */
 			var mform = document.getElementById('af-match-form');
