@@ -117,6 +117,12 @@ class AF_Analyzer {
 				}
 			}
 
+			// The same when the cite follows the closing quotation mark: "...evolutionary one” (GS 5). The Catechism says ...".
+			if ( ! $has_own && preg_match( '/^[\s\x{201D}\x{2019}"\']*[(\[]([^()\[\]]{1,80})[)\]]/us', $q['after'], $am ) && ( $this->cites( $am[1] ) || $this->marked_cites( $am[1] ) || $this->bare_cites( '(' . $am[1] . ')' ) ) ) {
+				$q['cite'] = trim( $q['cite'] . ' (' . $am[1] . ')' );
+				$has_own   = true;
+			}
+
 			// Words of the quotation, with pasted paragraph numbers removed from line starts.
 			$segments = array();
 			$joined   = array();
@@ -310,6 +316,12 @@ class AF_Analyzer {
 							$bits[] = ( $t['doc'] ? $t['doc'] : '?' ) . ' ' . implode( ',', $t['loc'] );
 						}
 						$note = 'typed ' . implode( '; ', $bits ) . ', text matches ' . $best['doc'] . ' ' . implode( ',', $best['locators'] );
+						foreach ( $typed_here as $t ) {
+							if ( $t['doc'] === $best['doc'] && 1 === count( $t['loc'] ) && 1 === count( $best['locators'] ) && 1 === levenshtein( (string) $t['loc'][0], (string) $best['locators'][0] ) ) {
+								$note .= ' (a likely typing slip)';
+								break;
+							}
+						}
 					}
 				} elseif ( $ambiguous ) {
 					$status = 'ambiguous';

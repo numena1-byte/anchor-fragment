@@ -124,6 +124,14 @@ check( '9h the quotation\'s own cite is wrong -> conflict naming that cite, not 
 $q = run1( $an, $get, '<blockquote><p>“' . $riv . ' (see the passage below)”</p></blockquote>' );
 
 
+// 9j. Two inline quotations, each followed by its own cite: the first cite is wrong, and it must not borrow the second one.
+$acx = 'Clay remembers the pressure of the hand that shaped it';
+$q = run1( $an, $get, '<p>The council acknowledges that “' . $riv . '” (TD 5). The entire cosmos is on a journey. Another Charter declares that “' . $acx . '” (AC 3).</p>' );
+$by = array(); foreach ( $q as $x ) { $by[ $x['best']['doc'] ] = $x; }
+check( '9j the first cite is read alone: conflict, typed TD 5 only, with a note', 'conflict' === $by['test-document']['status'] && 1 === count( $by['test-document']['typed'] ) && array( 5 ) === $by['test-document']['typed'][0]['loc'], json_encode( $by['test-document'] ) );
+check( '9k the second quotation takes its own cite only and is high', 'high' === $by['another-charter']['status'] && 1 === count( $by['another-charter']['typed'] ) && array( 3 ) === $by['another-charter']['typed'][0]['loc'], json_encode( $by['another-charter'] ) );
+check( '9l a number one digit off the matched paragraph is called a likely typing slip', false !== strpos( $by['test-document']['note'], 'typing slip' ), $by['test-document']['note'] );
+
 // 10. Bare number carries over from an earlier cite.
 $q = run1( $an, $get, '<blockquote>When the river rose that spring, the villagers gathered stones from the old mill and built a low wall along the bank, each family adding what it could carry.</blockquote><p>(TD 2)</p><blockquote>A lantern carried through the market at dusk reveals less about the road than about the one who carries it, for the light falls first on the hands and the face.</blockquote><p>(3)</p>' );
 check( '10 two quotes; second cited only as (3) after (TD 2) -> both high', 2 === count( $q ) && 'high' === $q[0]['status'] && 'high' === $q[1]['status'], json_encode( array_column( $q, 'status' ) ) );

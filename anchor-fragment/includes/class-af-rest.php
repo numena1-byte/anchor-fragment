@@ -778,6 +778,7 @@ class AF_Rest {
 				head.appendChild(a);
 				box.appendChild(head);
 				if (g.excerpt) { box.appendChild(el('div', '“' + g.excerpt + '…”', 'font-style:italic;color:#50575e;margin-bottom:.4em')); }
+				if (g.note) { box.appendChild(el('div', 'Matcher note: ' + g.note, 'color:#50575e;margin-bottom:.4em')); }
 				var sibs = g.edges.map(function (e) { return { edge: e }; });
 				g.edges.forEach(function (e) {
 					var row = el('div', null, 'padding:2px 0');

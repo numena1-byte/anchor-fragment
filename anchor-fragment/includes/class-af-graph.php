@@ -408,10 +408,12 @@ class AF_Graph {
 			);
 			$m   = get_option( 'af_match_' . (int) $k['post_id'] );
 			$exc = '';
+			$note = '';
 			if ( is_array( $m ) && ! empty( $m['quotes'] ) ) {
 				foreach ( $m['quotes'] as $q ) {
 					if ( (int) $q['i'] === (int) $k['quote_ord'] ) {
-						$exc = (string) ( $q['excerpt'] ?? '' );
+						$exc  = (string) ( $q['excerpt'] ?? '' );
+						$note = (string) ( $q['note'] ?? '' );
 						break;
 					}
 				}
@@ -422,6 +424,7 @@ class AF_Graph {
 				'title'   => $post ? $post->post_title : '',
 				'url'     => $post ? get_permalink( $post ) : '',
 				'excerpt' => $exc,
+				'note'    => $note,
 				'edges'   => $edges,
 			);
 		}
