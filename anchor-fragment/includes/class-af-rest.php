@@ -197,6 +197,28 @@ class AF_Rest {
 		);
 		register_rest_route(
 			'anchorfrag/v1',
+			'/graph/review',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( __CLASS__, 'handle_graph_review' ),
+				'permission_callback' => function () {
+					return current_user_can( 'edit_posts' );
+				},
+			)
+		);
+		register_rest_route(
+			'anchorfrag/v1',
+			'/graph/confirm',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'handle_graph_confirm' ),
+				'permission_callback' => function () {
+					return current_user_can( 'manage_options' );
+				},
+			)
+		);
+		register_rest_route(
+			'anchorfrag/v1',
 			'/graph',
 			array(
 				'methods'             => 'GET',
@@ -225,16 +247,43 @@ class AF_Rest {
 			}
 		}
 		if ( $req['status'] ) {
-			$f['status'] = array_map( 'sanitize_key', explode( ',', (string) $req['status'] ) );
+			$f['status'] = AF_Graph::status_set( sanitize_text_field( $req['status'] ) );
 		}
 		$out = array( 'summary' => AF_Graph::summary( $f ), 'top' => AF_Graph::top_paragraphs( $f, 15 ) );
-		if ( isset( $f['doc'] ) ) {
+		if ( isset( $f['doc'] ) || isset( $f['status'] ) ) {
 			$out['posts'] = AF_Graph::citing_posts( $f, 100 );
 			foreach ( $out['posts'] as &$p ) {
 				$p['url'] = get_permalink( (int) $p['post_id'] );
 			}
 		}
 		return rest_ensure_response( $out );
+	}
+
+	public static function handle_graph_review( WP_REST_Request $req ) {
+		AF_Graph::maybe_install();
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( 60 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		}
+		$f = array( 'status' => AF_Graph::status_set( sanitize_text_field( (string) $req['status'] ?: 'review' ) ) );
+		if ( $req['doc'] ) {
+			$f['doc'] = sanitize_text_field( $req['doc'] );
+		}
+		$f['confirmed'] = $req['reviewed'] ? 'any' : 'unreviewed';
+		$res            = AF_Graph::review( $f, (int) $req['offset'], 20 );
+		$reg            = AF_Service::registry();
+		foreach ( $res['groups'] as &$g ) {
+			foreach ( $g['edges'] as &$e ) {
+				$e['title'] = isset( $reg[ $e['doc'] ] ) ? $reg[ $e['doc'] ]['title'] : $e['doc'];
+				$lk         = AF_Service::link( $e['doc'], $e['locator'] );
+				$e['link']  = is_wp_error( $lk ) ? '' : $lk['link'];
+			}
+		}
+		return rest_ensure_response( $res );
+	}
+
+	public static function handle_graph_confirm( WP_REST_Request $req ) {
+		$v = $req['value'];
+		return rest_ensure_response( array( 'id' => (int) $req['id'], 'confirmed' => AF_Graph::set_confirmed( (int) $req['id'], ( null === $v || '' === $v || 'null' === $v ) ? null : (int) $v ) ) );
 	}
 
 	public static function handle_status() {
@@ -372,6 +421,8 @@ class AF_Rest {
 			'passage' => rest_url( 'anchorfrag/v1/passage' ),
 			'graph'   => rest_url( 'anchorfrag/v1/graph' ),
 			'rebuild' => rest_url( 'anchorfrag/v1/graph/rebuild' ),
+			'review'  => rest_url( 'anchorfrag/v1/graph/review' ),
+			'confirm' => rest_url( 'anchorfrag/v1/graph/confirm' ),
 			'nonce' => wp_create_nonce( 'wp_rest' ),
 		);
 		?>
@@ -501,10 +552,19 @@ class AF_Rest {
 				<?php endforeach; ?>
 				</select>
 				Paragraph <input type="text" name="locator" size="6">
-				Confidence <select name="status"><option value="">high + medium</option><option value="high">high only</option><option value="high,medium,low,partial">+ low, partial</option><option value="all">everything</option></select>
+				Confidence <select name="status"><option value="">high + medium</option><option value="high">high only</option><option value="weaker">+ low, partial</option><option value="review">conflict + ambiguous</option><option value="conflict">conflict only</option><option value="ambiguous">ambiguous only</option><option value="unchecked">typed, not checked</option><option value="all">everything</option></select>
 				<button class="button" type="submit">Show</button>
 			</form>
 			<div id="af-graph-out" style="margin-top:1em;max-width:70em"></div>
+
+			<h3>Review citations</h3>
+			<p>Each entry is one quotation. For a conflict, the author typed one paragraph and the words matched another: mark which is right. Decisions are kept when posts are matched again, and wrong edges leave every report.</p>
+			<form id="af-review-form">
+				<select name="status"><option value="review">conflict + ambiguous</option><option value="conflict">conflict only</option><option value="ambiguous">ambiguous only</option><option value="unchecked">typed, not checked</option></select>
+				<label><input type="checkbox" name="reviewed"> include ones already reviewed</label>
+				<button class="button" type="submit">Load</button>
+			</form>
+			<div id="af-review-out" style="margin-top:1em;max-width:70em"></div>
 
 			<hr>
 			<h2>Match posts</h2>
@@ -694,6 +754,79 @@ class AF_Rest {
 			}
 			gform.addEventListener('submit', function (e) { e.preventDefault(); showGraph(); });
 			showGraph();
+
+			/* ---- review ---- */
+			var rform = document.getElementById('af-review-form');
+			var rout = document.getElementById('af-review-out');
+			var roffset = 0;
+			function decide(btnRow, edge, value, siblings) {
+				var all = [{ edge: edge, value: value }];
+				if (value === 1 && edge.status === 'conflict') { // the other conflicting edges of this quotation cannot also be right
+					siblings.forEach(function (s) { if (s.edge.id !== edge.id && s.edge.status === 'conflict' && s.edge.confirmed !== '1' && s.edge.confirmed !== 1) { all.push({ edge: s.edge, value: 0 }); } });
+				}
+				all.forEach(function (d) {
+					var body = new URLSearchParams({ id: d.edge.id, value: d.value === null ? '' : d.value });
+					fetch(cfg.confirm, { method: 'POST', headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin', body: body })
+						.then(function (r) { return r.json(); })
+						.then(function (j) { d.edge.confirmed = j.confirmed === null ? null : String(j.confirmed); d.edge.paint(); });
+				});
+			}
+			function renderGroup(g) {
+				var box = el('div', null, 'border:1px solid #ccd0d4;background:#fff;padding:.6em .9em;margin:0 0 .8em');
+				var head = el('div', null, 'margin-bottom:.3em');
+				var a = el('a', g.title || ('#' + g.post_id)); a.href = g.url; a.target = '_blank'; a.rel = 'noopener';
+				head.appendChild(a);
+				box.appendChild(head);
+				if (g.excerpt) { box.appendChild(el('div', '“' + g.excerpt + '…”', 'font-style:italic;color:#50575e;margin-bottom:.4em')); }
+				var sibs = g.edges.map(function (e) { return { edge: e }; });
+				g.edges.forEach(function (e) {
+					var row = el('div', null, 'padding:2px 0');
+					var label = el('span', null, 'display:inline-block;min-width:7em');
+					var link = el('a', e.title + ' ' + e.locator); if (e.link) { link.href = e.link; link.target = '_blank'; link.rel = 'noopener'; }
+					var how = e.basis === 'typed' ? 'author typed' : 'words match';
+					var cov = e.cover !== null && e.cover !== undefined ? ', ' + Math.round(e.cover * 100) + '% of the words' : '';
+					label.textContent = how;
+					var state = el('span', null, 'margin-left:.6em;font-weight:600');
+					var yes = el('button', 'Correct'); yes.className = 'button button-small'; yes.type = 'button';
+					var no = el('button', 'Wrong'); no.className = 'button button-small'; no.type = 'button'; no.style.marginLeft = '4px';
+					var clr = el('button', 'Clear'); clr.className = 'button button-small'; clr.type = 'button'; clr.style.marginLeft = '4px';
+					e.paint = function () {
+						var c = e.confirmed === null || e.confirmed === undefined ? null : String(e.confirmed);
+						state.textContent = c === '1' ? '✔ correct' : c === '0' ? '✘ wrong' : '';
+						row.style.opacity = c === '0' ? '.55' : '1';
+					};
+					yes.addEventListener('click', function () { decide(row, e, 1, sibs); });
+					no.addEventListener('click', function () { decide(row, e, 0, sibs); });
+					clr.addEventListener('click', function () { decide(row, e, null, sibs); });
+					row.appendChild(label); row.appendChild(link); row.appendChild(el('span', ' (' + e.status + cov + ') ', 'color:#50575e'));
+					row.appendChild(yes); row.appendChild(no); row.appendChild(clr); row.appendChild(state);
+					e.paint();
+					box.appendChild(row);
+				});
+				return box;
+			}
+			function loadReview(append) {
+				if (!append) { roffset = 0; rout.textContent = 'Loading…'; }
+				var q = new URLSearchParams({ status: rform.status.value, offset: roffset });
+				if (rform.reviewed.checked) { q.set('reviewed', '1'); }
+				fetch(cfg.review + '?' + q.toString(), { headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' })
+					.then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+					.then(function (res) {
+						if (!res.ok) { rout.textContent = 'Failed: ' + (res.body.message || 'request failed'); return; }
+						var b = res.body;
+						if (!append) { rout.textContent = ''; rout.appendChild(el('p', b.total + ' quotations to review.', 'font-weight:600')); }
+						var old = document.getElementById('af-review-more'); if (old) { old.remove(); }
+						b.groups.forEach(function (g) { rout.appendChild(renderGroup(g)); });
+						roffset += b.groups.length;
+						if (roffset < b.total && b.groups.length) {
+							var more = el('button', 'Show the next ' + Math.min(20, b.total - roffset)); more.className = 'button'; more.id = 'af-review-more'; more.type = 'button';
+							more.addEventListener('click', function () { more.disabled = true; loadReview(true); });
+							rout.appendChild(more);
+						}
+					})
+					.catch(function (err) { rout.textContent = 'Request failed (' + err + ').'; });
+			}
+			rform.addEventListener('submit', function (e) { e.preventDefault(); loadReview(false); });
 
 			/* ---- match posts ---- */
 			var mform = document.getElementById('af-match-form');

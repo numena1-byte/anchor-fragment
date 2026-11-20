@@ -269,8 +269,13 @@ class AF_Graph {
 		$args = array();
 		$st   = ! empty( $f['status'] ) ? (array) $f['status'] : self::CONFIDENT;
 		if ( 'all' !== $st[0] ) {
-			$w[]  = 'c.status IN (' . implode( ',', array_fill( 0, count( $st ), '%s' ) ) . ')';
+			// An edge a reviewer confirmed counts whatever the matcher thought of it.
+			$in   = 'c.status IN (' . implode( ',', array_fill( 0, count( $st ), '%s' ) ) . ')';
+			$w[]  = empty( $f['strict'] ) ? "({$in} OR c.confirmed = 1)" : $in; // 'strict': exactly these statuses (the review list)
 			$args = array_merge( $args, array_values( $st ) );
+		}
+		if ( empty( $f['confirmed'] ) || ! in_array( $f['confirmed'], array( 'no', 'any' ), true ) ) {
+			$w[] = '(c.confirmed IS NULL OR c.confirmed = 1)'; // rejected edges are left out of every view
 		}
 		foreach ( array( 'doc', 'basis' ) as $k ) {
 			if ( ! empty( $f[ $k ] ) ) {
@@ -345,5 +350,73 @@ class AF_Graph {
 			array(),
 			$a
 		);
+	}
+
+	/** Statuses a reviewer picks from the filter, by name. */
+	public static function status_set( $name ) {
+		$sets = array(
+			''          => array( 'high', 'medium' ),
+			'high'      => array( 'high' ),
+			'weaker'    => array( 'high', 'medium', 'low', 'partial' ),
+			'review'    => array( 'conflict', 'ambiguous' ),
+			'conflict'  => array( 'conflict' ),
+			'ambiguous' => array( 'ambiguous' ),
+			'unchecked' => array( 'unchecked' ),
+			'all'       => array( 'all' ),
+		);
+		return $sets[ $name ] ?? ( false !== strpos( (string) $name, ',' ) ? array_map( 'sanitize_key', explode( ',', $name ) ) : array( sanitize_key( $name ) ) );
+	}
+
+	/**
+	 * Edges to review, grouped by quotation: one entry per (post, quotation) with every edge it produced.
+	 * A conflict has the typed paragraph and the matched paragraph side by side.
+	 *
+	 * @param array $f      Filters as for summary().
+	 * @param int   $offset Groups to skip.
+	 * @param int   $limit  Groups to return.
+	 * @return array { groups[], total }
+	 */
+	public static function review( array $f, $offset = 0, $limit = 20 ) {
+		global $wpdb;
+		$t = self::table();
+		list( $w, $a ) = self::where( $f + array( 'strict' => true ) );
+		// A quotation is identified by its post and its fingerprint (or its position when there is none).
+		$keysq = "SELECT c.post_id AS post_id, c.quote_hash AS quote_hash, c.quote_ord AS quote_ord FROM {$t} c JOIN {$wpdb->posts} p ON p.ID = c.post_id WHERE {$w} GROUP BY c.post_id, c.quote_hash, c.quote_ord ORDER BY MAX(p.post_date) DESC, c.post_id DESC, c.quote_ord ASC";
+		$total = (int) self::run( "SELECT COUNT(*) AS n FROM ({$keysq}) x", array(), $a )[0]['n'];
+		$keys  = self::run( $keysq . ' LIMIT ' . (int) $limit . ' OFFSET ' . (int) $offset, array(), $a );
+		$out   = array();
+		foreach ( $keys as $k ) {
+			$edges = $wpdb->get_results(
+				$wpdb->prepare( "SELECT id, doc, locator, loc_num, basis, status, cover, confirmed FROM {$t} WHERE post_id = %d AND quote_hash = %s AND quote_ord = %d ORDER BY basis DESC, loc_num ASC", (int) $k['post_id'], (string) $k['quote_hash'], (int) $k['quote_ord'] ),
+				ARRAY_A
+			);
+			$m   = get_option( 'af_match_' . (int) $k['post_id'] );
+			$exc = '';
+			if ( is_array( $m ) && ! empty( $m['quotes'] ) ) {
+				foreach ( $m['quotes'] as $q ) {
+					if ( (int) $q['i'] === (int) $k['quote_ord'] ) {
+						$exc = (string) ( $q['excerpt'] ?? '' );
+						break;
+					}
+				}
+			}
+			$post  = get_post( (int) $k['post_id'] );
+			$out[] = array(
+				'post_id' => (int) $k['post_id'],
+				'title'   => $post ? $post->post_title : '',
+				'url'     => $post ? get_permalink( $post ) : '',
+				'excerpt' => $exc,
+				'edges'   => $edges,
+			);
+		}
+		return array( 'groups' => $out, 'total' => $total );
+	}
+
+	/** A reviewer's decision on one edge: 1 correct, 0 wrong, null not reviewed. */
+	public static function set_confirmed( $id, $value ) {
+		global $wpdb;
+		$v = ( null === $value || '' === $value ) ? null : ( (int) $value ? 1 : 0 );
+		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::table() . ' SET confirmed = ' . ( null === $v ? 'NULL' : (int) $v ) . ' WHERE id = %d', (int) $id ) );
+		return $v;
 	}
 }

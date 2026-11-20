@@ -6,6 +6,9 @@ require __DIR__ . '/stubs.php';
 foreach ( array( 'parser', 'graph' ) as $f ) { require AF_DIR . "includes/class-af-$f.php"; }
 
 define( 'ARRAY_A', 'ARRAY_A' );
+function sanitize_key( $k ) { return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( $k ) ); }
+function get_post( $id ) { $r = $GLOBALS['wpdb']->get_results( 'SELECT * FROM wp_posts WHERE ID = ' . (int) $id ); return $r ? (object) $r[0] : null; }
+function get_permalink( $p ) { return 'https://staging.example/?p=' . $p->ID; }
 $GLOBALS['meta'] = array();
 function get_post_meta( $id, $k, $s = false ) { return $GLOBALS['meta'][ $id ][ $k ] ?? ''; }
 function update_post_meta( $id, $k, $v ) { $GLOBALS['meta'][ $id ][ $k ] = $v; }
@@ -26,6 +29,7 @@ class FakeDb {
 	}
 	function get_results( $sql, $o = null ) { return $this->pdo->query( $sql )->fetchAll( PDO::FETCH_ASSOC ); }
 	function get_var( $sql ) { $r = $this->pdo->query( $sql )->fetch( PDO::FETCH_NUM ); return $r ? $r[0] : null; }
+	function query( $sql ) { return $this->pdo->exec( $sql ); }
 	function insert( $t, $d ) { $this->pdo->prepare( "INSERT INTO $t (" . implode( ',', array_keys( $d ) ) . ') VALUES (' . implode( ',', array_fill( 0, count( $d ), '?' ) ) . ')' )->execute( array_values( $d ) ); }
 	function update( $t, $d, $w ) { $this->pdo->prepare( "UPDATE $t SET " . implode( ',', array_map( function ( $k ) { return "$k=?"; }, array_keys( $d ) ) ) . ' WHERE ' . implode( ' AND ', array_map( function ( $k ) { return "$k=?"; }, array_keys( $w ) ) ) )->execute( array_merge( array_values( $d ), array_values( $w ) ) ); }
 	function delete( $t, $w ) { $this->pdo->prepare( "DELETE FROM $t WHERE " . implode( ' AND ', array_map( function ( $k ) { return "$k=?"; }, array_keys( $w ) ) ) )->execute( array_values( $w ) ); }
@@ -95,6 +99,35 @@ check( 'stale when never matched', ! AF_Graph::is_fresh( 99, '2020-01-01 00:00:0
 
 AF_Graph::forget_post( 2 );
 check( 'forget removes edges and mark', 0 === (int) $wpdb->get_var( 'SELECT COUNT(*) FROM wp_af_citations WHERE post_id = 2' ) && '' === get_post_meta( 2, AF_Graph::META_KEY ) );
+
+// Review: a quotation's edges are grouped, decisions are kept and leave the reports.
+$GLOBALS['opts']['af_match_1'] = array( 'quotes' => array( array( 'i' => 4, 'excerpt' => 'Some quoted words' ) ) );
+AF_Graph::record_post( 1, $res1 ); // restore the original set for post 1
+$rv = AF_Graph::review( array( 'status' => AF_Graph::status_set( 'review' ), 'confirmed' => 'unreviewed' ), 0, 20 );
+$conf = array_values( array_filter( $rv['groups'], function ( $g ) { return 1 === $g['post_id'] && 'Some quoted words' === $g['excerpt']; } ) );
+check( 'review finds the conflict quotation with its excerpt', 1 === count( $conf ), json_encode( $rv ) );
+check( 'a conflict shows the typed and the matched paragraph together', 2 === count( $conf[0]['edges'] ) && 'typed' === $conf[0]['edges'][0]['basis'], json_encode( $conf ) );
+$amb = array_values( array_filter( $rv['groups'], function ( $g ) { return 2 === count( $g['edges'] ) && 'ambiguous' === $g['edges'][0]['status']; } ) );
+check( 'ambiguous quotation is listed once with both paragraphs', 1 === count( $amb ) && 2 === $rv['total'], json_encode( $rv['total'] ) );
+$typed = (int) $conf[0]['edges'][0]['id']; $matched = (int) $conf[0]['edges'][1]['id'];
+AF_Graph::set_confirmed( $typed, 0 );
+AF_Graph::set_confirmed( $matched, 1 );
+$rv2 = AF_Graph::review( array( 'status' => AF_Graph::status_set( 'review' ), 'confirmed' => 'unreviewed' ), 0, 20 );
+check( 'a reviewed conflict leaves the to-review list', $rv['total'] - 1 === $rv2['total'], $rv['total'] . ' -> ' . $rv2['total'] );
+$rv3 = AF_Graph::review( array( 'status' => AF_Graph::status_set( 'review' ), 'confirmed' => 'any' ), 0, 20 );
+check( 'reviewed ones come back when asked', $rv3['total'] === $rv['total'], json_encode( $rv3['groups'] ) );
+$cit = AF_Graph::citing_posts( array( 'doc' => 'laudato-si', 'locator' => '16' ) );
+check( 'a confirmed conflict edge now counts in the default view', 1 === count( $cit ) );
+$cit = AF_Graph::citing_posts( array( 'doc' => 'laudato-si', 'locator' => '20', 'status' => array( 'all' ) ) );
+check( 'a rejected edge leaves every view', 0 === count( $cit ), json_encode( $cit ) );
+$cit = AF_Graph::citing_posts( array( 'doc' => 'laudato-si', 'locator' => '20', 'status' => array( 'all' ), 'confirmed' => 'no' ) );
+check( 'rejected edges can be listed on request', 1 === count( $cit ) );
+AF_Graph::record_post( 1, $res1 );
+$kept = $wpdb->get_results( "SELECT confirmed FROM wp_af_citations WHERE id = $matched" );
+check( 're-matching keeps the decision', 1 === (int) $kept[0]['confirmed'] );
+AF_Graph::set_confirmed( $matched, null );
+check( 'clear removes the decision', null === $wpdb->get_var( "SELECT confirmed FROM wp_af_citations WHERE id = $matched" ) );
+check( 'status names', array( 'conflict', 'ambiguous' ) === AF_Graph::status_set( 'review' ) && array( 'all' ) === AF_Graph::status_set( 'all' ) );
 
 echo $fail ? "\n$fail FAILED\n" : "\nall passed\n";
 exit( $fail ? 1 : 0 );
