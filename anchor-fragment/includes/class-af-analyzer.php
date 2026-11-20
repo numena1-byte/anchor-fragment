@@ -102,10 +102,25 @@ class AF_Analyzer {
 		foreach ( $this->extract( $html ) as $q ) {
 			$n++;
 
+			// A cite at the end of the quotation's own paragraph, as in "... the weakest" (DT 16).", belongs to the quotation and
+			// is not part of its words. When there is one, it is the author's citation of this quotation: a cite in the text before
+			// or after, which is usually about the neighbouring quotation, is not read for it.
+			$qparas  = $q['paras'];
+			$has_own = false;
+			if ( $qparas ) {
+				$k  = count( $qparas ) - 1;
+				$sp = $this->split_trailing_cite( $qparas[ $k ] );
+				if ( '' !== $sp[1] ) {
+					$qparas[ $k ] = $sp[0];
+					$q['cite']    = trim( $q['cite'] . ' ' . $sp[1] );
+					$has_own      = true;
+				}
+			}
+
 			// Words of the quotation, with pasted paragraph numbers removed from line starts.
 			$segments = array();
 			$joined   = array();
-			foreach ( $q['paras'] as $p ) {
+			foreach ( $qparas as $p ) {
 				$p = preg_replace( '/^\s*\d{1,4}\.\s+/u', '', $p );
 				if ( '' === trim( $p ) ) {
 					continue;
@@ -136,12 +151,12 @@ class AF_Analyzer {
 			$oos = array_merge( $oos, $foreign );
 
 			// Citations the author typed.
-			$typed = $this->cites( $ctx );
+			$typed = $this->cites( $has_own ? $q['cite'] : $ctx );
 			// A quotation inserted by the plugin says which paragraph it is meant to be.
 			if ( ! empty( $q['declared'] ) && isset( $this->docs[ $q['declared']['doc'] ] ) ) {
 				$typed[] = array( 'doc' => $q['declared']['doc'], 'loc' => $q['declared']['loc'] );
 			}
-			foreach ( $this->bare_cites( $q['cite'] . ' ' . $q['after'] ) as $loc ) {
+			foreach ( $this->bare_cites( $has_own ? $q['cite'] : $q['cite'] . ' ' . $q['after'] ) as $loc ) {
 				$doc = $carry;
 				if ( null === $doc && 1 === count( $hints ) ) {
 					$doc = $hints[0];
@@ -156,7 +171,7 @@ class AF_Analyzer {
 			$head = mb_substr( $q['after'], 0, 100 );
 			// Each stretch of text is read on its own, so that a sentence cannot run from the text before the
 			// quotation into the text after it.
-			$marked = array_merge( $this->marked_cites( $q['cite'] ), $this->marked_cites( $tail ), $this->marked_cites( $head ) );
+			$marked = $has_own ? $this->marked_cites( $q['cite'] ) : array_merge( $this->marked_cites( $q['cite'] ), $this->marked_cites( $tail ), $this->marked_cites( $head ) );
 			foreach ( $marked as $mc ) {
 				$doc = $mc['doc']; // Set when the cite names its document in the same sentence.
 				if ( null === $doc ) {
@@ -432,6 +447,23 @@ class AF_Analyzer {
 			}
 		}
 		return array_values( $out );
+	}
+
+	/**
+	 * Split a cite off the end of a quotation's paragraph: "...in favor of the weakest" (DT 16)." gives the words and
+	 * "(DT 16)". Nothing is split unless the bracketed text reads as a citation.
+	 *
+	 * @return array [ words, cite ]
+	 */
+	private function split_trailing_cite( $p ) {
+		if ( ! preg_match( '/^(.*?)[\s\x{201D}\x{2019}"\']*[(\[]([^()\[\]]{1,80})[)\]]\s*[.,;:]?\s*$/us', $p, $m ) || '' === trim( $m[1] ) ) {
+			return array( $p, '' );
+		}
+		$cap = $m[2];
+		if ( ! $this->cites( $cap ) && ! $this->marked_cites( $cap ) && ! $this->bare_cites( '(' . $cap . ')' ) ) {
+			return array( $p, '' );
+		}
+		return array( rtrim( $m[1] ), '(' . $cap . ')' );
 	}
 
 	/**

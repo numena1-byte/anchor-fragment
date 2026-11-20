@@ -135,6 +135,10 @@ class AF_Graph {
 					continue;
 				}
 				foreach ( $t['loc'] as $loc ) {
+					// When the quotation is confirmed by a typed cite, other numbers found near it are not edges.
+					if ( 'high' === $status && ! ( ! empty( $q['best'] ) && $t['doc'] === $q['best']['doc'] && in_array( $loc, $q['best']['locators'], true ) ) ) {
+						continue;
+					}
 					$add( $q, $t['doc'], $loc, 'typed', 'conflict' === $status ? 'conflict' : ( 'high' === $status ? 'high' : 'unchecked' ), null );
 				}
 			}

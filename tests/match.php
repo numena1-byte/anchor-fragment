@@ -109,6 +109,21 @@ check( '9d name just before beats a name in the next sentence -> another-charter
 $q = run1( $an, $get, '<p>As Test Document and Another Charter both teach, the following lines are shared.</p><blockquote>' . $sentence . '.</blockquote>' );
 check( '9e both named just before -> still ambiguous', 'ambiguous' === $q[0]['status'], json_encode( $q ) );
 
+// 9f. A cite at the end of the quotation's own paragraph belongs to that quotation, not to its neighbours.
+$riv = 'When the river rose that spring, the villagers gathered stones from the old mill and built a low wall along the bank, each family adding what it could carry.';
+$lan = 'A lantern carried through the market at dusk reveals less about the road than about the one who carries it, for the light falls first on the hands and the face.';
+$pil = 'The harbour pilot knows the shifting sandbars not from charts but from years of small corrections, each one made in humility before the tide.';
+$q = run1( $an, $get, '<blockquote><p>“' . $riv . '” (TD 2).</p></blockquote><p>Then, he says, “' . $lan . '” (TD 3). And so we move to what follows:</p><blockquote><p>“' . $pil . '” (TD 6).</p></blockquote>' );
+$locs = array(); foreach ( $q as $x ) { $locs[ $x['typed'][0]['loc'][0] ] = array( $x['status'], count( $x['typed'] ), $x['best']['locators'][0] ); }
+ksort( $locs );
+check( '9f cite inside each quotation paragraph -> three high, each with its own cite only', 3 === count( $q ) && array( 2 => array( 'high', 1, 2 ), 3 => array( 'high', 1, 3 ), 6 => array( 'high', 1, 6 ) ) === $locs, json_encode( $locs ) );
+check( '9g the cite is not counted among the words', 1.0 === (float) $q[0]['best']['coverage'], json_encode( $q[0]['best'] ) );
+$q = run1( $an, $get, '<p>Previously: “' . $riv . '” (TD 2).</p><blockquote><p>“' . $pil . '” (TD 3).</p></blockquote>' );
+$bq = $q[0];
+check( '9h the quotation\'s own cite is wrong -> conflict naming that cite, not the neighbour\'s', 'conflict' === $bq['status'] && 1 === count( $bq['typed'] ) && array( 3 ) === $bq['typed'][0]['loc'] && array( 6 ) === $bq['best']['locators'], json_encode( $bq ) );
+$q = run1( $an, $get, '<blockquote><p>“' . $riv . ' (see the passage below)”</p></blockquote>' );
+
+
 // 10. Bare number carries over from an earlier cite.
 $q = run1( $an, $get, '<blockquote>When the river rose that spring, the villagers gathered stones from the old mill and built a low wall along the bank, each family adding what it could carry.</blockquote><p>(TD 2)</p><blockquote>A lantern carried through the market at dusk reveals less about the road than about the one who carries it, for the light falls first on the hands and the face.</blockquote><p>(3)</p>' );
 check( '10 two quotes; second cited only as (3) after (TD 2) -> both high', 2 === count( $q ) && 'high' === $q[0]['status'] && 'high' === $q[1]['status'], json_encode( array_column( $q, 'status' ) ) );

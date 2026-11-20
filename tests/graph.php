@@ -134,5 +134,10 @@ $resA = array( 'quotes' => array( array( 'i' => 1, 'status' => 'ambiguous', 'wor
 $ra = AF_Graph::rows_from_result( $resA );
 check( 'ambiguous across documents records the equal candidates only', 2 === count( $ra ) && null !== $by( $ra, 'dilexi-te', 36 ) && null !== $by( $ra, 'evangelii-gaudium', 48 ) && null === $by( $ra, 'laudato-si', 9 ), json_encode( array_keys( $ra ) ) );
 
+// A typed number that disagrees with a high match is not an edge.
+$resH = array( 'quotes' => array( array( 'i' => 1, 'status' => 'high', 'words' => 30, 'hash' => 'hhigh', 'best' => $b( 'dilexi-te', array( 16 ) ), 'alt' => array(), 'typed' => array( array( 'doc' => 'dilexi-te', 'loc' => array( 21 ) ), array( 'doc' => 'dilexi-te', 'loc' => array( 16 ) ) ) ) ) );
+$rh = AF_Graph::rows_from_result( $resH );
+check( 'a high quotation records only the paragraph that agrees', 1 === count( $rh ) && null !== $by( $rh, 'dilexi-te', 16 ), json_encode( array_keys( $rh ) ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nall passed\n";
 exit( $fail ? 1 : 0 );
