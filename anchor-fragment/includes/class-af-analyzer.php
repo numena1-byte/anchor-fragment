@@ -214,6 +214,7 @@ class AF_Analyzer {
 
 			$best      = null;
 			$ambiguous = false;
+			$resolved  = '';
 			$alts      = array();
 			if ( $scores ) {
 				// Among documents scoring within TIE of the best, prefer one that is named.
@@ -223,7 +224,14 @@ class AF_Analyzer {
 						$cands[] = $s;
 					}
 				}
-				$rank = function ( $doc ) use ( $hints, $tag_docs ) {
+				// A document named just before the quotation ("again Francis, from Evangelii Gaudium:") or in its own
+				// footer is the one the author means. A name later in the text, as in "Dilexi te confirms this,
+				// adding that ...", introduces the next sentence and is only a general hint.
+				$named_before = array_values( array_unique( array_merge( $this->docs_in( mb_substr( $q['lead'], -90 ) ), $this->docs_in( $q['cite'] ) ) ) );
+				$rank = function ( $doc ) use ( $hints, $tag_docs, $named_before ) {
+					if ( in_array( $doc, $named_before, true ) ) {
+						return 3;
+					}
 					return in_array( $doc, $hints, true ) ? 2 : ( in_array( $doc, $tag_docs, true ) ? 1 : 0 );
 				};
 				$top_rank = -1;
@@ -240,6 +248,9 @@ class AF_Analyzer {
 					}
 				}
 				$ambiguous = $tied > 1 && $best['coverage'] >= self::ACCEPT;
+				if ( ! $ambiguous && 3 === $top_rank && count( $cands ) > 1 ) {
+					$resolved = 'several documents contain these words; the one named just before the quotation was chosen';
+				}
 				foreach ( $scores as $s ) {
 					if ( $s['doc'] !== $best['doc'] && $s['coverage'] >= self::ALT ) {
 						$alts[] = array( 'doc' => $s['doc'], 'locators' => $s['locators'], 'coverage' => $s['coverage'] );
@@ -262,7 +273,7 @@ class AF_Analyzer {
 			);
 
 			// Decide.
-			$note = '';
+			$note = $resolved;
 			if ( $tokens < AF_Matcher::MIN_TOKENS ) {
 				$status = 'too_short';
 				$note   = $tokens . ' words';

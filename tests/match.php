@@ -103,6 +103,12 @@ check( '9b lead-in names Another Charter -> medium, paragraph 2 of that document
 $q = run1( $an, $get, '<blockquote>' . $sentence . '.</blockquote>', array( 'Another Charter' ) );
 check( '9c a tag naming Another Charter also breaks the tie', 'another-charter' === $q[0]['best']['doc'] && 'ambiguous' !== $q[0]['status'], json_encode( $q ) );
 
+// 9d. The name just before the quotation wins over a name in the text after it (a later sentence introducing the next quote).
+$q = run1( $an, $get, '<p>Poverty is bound up with everything, again from Another Charter: “' . $sentence . '.” Test Document confirms this, adding something else entirely.</p>' );
+check( '9d name just before beats a name in the next sentence -> another-charter, with a note', 'another-charter' === $q[0]['best']['doc'] && 'ambiguous' !== $q[0]['status'] && '' !== $q[0]['note'], json_encode( $q ) );
+$q = run1( $an, $get, '<p>As Test Document and Another Charter both teach, the following lines are shared.</p><blockquote>' . $sentence . '.</blockquote>' );
+check( '9e both named just before -> still ambiguous', 'ambiguous' === $q[0]['status'], json_encode( $q ) );
+
 // 10. Bare number carries over from an earlier cite.
 $q = run1( $an, $get, '<blockquote>When the river rose that spring, the villagers gathered stones from the old mill and built a low wall along the bank, each family adding what it could carry.</blockquote><p>(TD 2)</p><blockquote>A lantern carried through the market at dusk reveals less about the road than about the one who carries it, for the light falls first on the hands and the face.</blockquote><p>(3)</p>' );
 check( '10 two quotes; second cited only as (3) after (TD 2) -> both high', 2 === count( $q ) && 'high' === $q[0]['status'] && 'high' === $q[1]['status'], json_encode( array_column( $q, 'status' ) ) );

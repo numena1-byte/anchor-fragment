@@ -129,5 +129,10 @@ AF_Graph::set_confirmed( $matched, null );
 check( 'clear removes the decision', null === $wpdb->get_var( "SELECT confirmed FROM wp_af_citations WHERE id = $matched" ) );
 check( 'status names', array( 'conflict', 'ambiguous' ) === AF_Graph::status_set( 'review' ) && array( 'all' ) === AF_Graph::status_set( 'all' ) );
 
+// An ambiguous quotation between two documents records both candidates; a weak alternative is left out.
+$resA = array( 'quotes' => array( array( 'i' => 1, 'status' => 'ambiguous', 'words' => 19, 'hash' => 'hamb', 'best' => $b( 'evangelii-gaudium', array( 48 ), 1.0 ), 'alt' => array( array( 'doc' => 'dilexi-te', 'locators' => array( 36 ), 'coverage' => 1.0 ), array( 'doc' => 'laudato-si', 'locators' => array( 9 ), 'coverage' => 0.3 ) ), 'typed' => array() ) ) );
+$ra = AF_Graph::rows_from_result( $resA );
+check( 'ambiguous across documents records the equal candidates only', 2 === count( $ra ) && null !== $by( $ra, 'dilexi-te', 36 ) && null !== $by( $ra, 'evangelii-gaudium', 48 ) && null === $by( $ra, 'laudato-si', 9 ), json_encode( array_keys( $ra ) ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nall passed\n";
 exit( $fail ? 1 : 0 );

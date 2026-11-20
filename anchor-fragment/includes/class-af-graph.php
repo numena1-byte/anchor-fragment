@@ -26,6 +26,8 @@ class AF_Graph {
 	const META_KEY   = '_af_matched';
 	/** Statuses that count as "the post cites this paragraph" unless a report asks for more or less. */
 	const CONFIDENT = array( 'high', 'medium' );
+	/** An alternative counts as a candidate when it covers the quotation within this much of the best match. */
+	const TIE = 0.05;
 
 	public static function table() {
 		global $wpdb;
@@ -115,6 +117,16 @@ class AF_Graph {
 			if ( ! empty( $q['best'] ) && in_array( $status, array( 'high', 'medium', 'low', 'ambiguous', 'conflict', 'partial' ), true ) ) {
 				foreach ( $q['best']['locators'] as $loc ) {
 					$add( $q, $q['best']['doc'], $loc, 'high' === $status ? 'typed' : 'text-match', $status, round( (float) $q['best']['coverage'], 3 ) );
+				}
+				// An ambiguous quotation is a choice between candidates, so the ones that fit as well belong in the graph too.
+				if ( 'ambiguous' === $status ) {
+					foreach ( (array) ( $q['alt'] ?? array() ) as $a ) {
+						if ( (float) $a['coverage'] >= (float) $q['best']['coverage'] - self::TIE ) {
+							foreach ( $a['locators'] as $loc ) {
+								$add( $q, $a['doc'], $loc, 'text-match', 'ambiguous', round( (float) $a['coverage'], 3 ) );
+							}
+						}
+					}
 				}
 			}
 			// A citation the author typed is an edge even where the words could not confirm it.
