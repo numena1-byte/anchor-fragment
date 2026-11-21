@@ -523,13 +523,13 @@ class AF_Analyzer {
 	}
 
 	/**
-	 * Bare numbers in parentheses, "(74)" or "(nn. 12-14)", which carry on from an earlier cite.
+	 * Bare numbers in parentheses, "(74)", "(nn. 12-14)" or "(ibid. 116)", which carry on from an earlier cite.
 	 *
 	 * @return array[] each a list of numbers
 	 */
 	private function bare_cites( $text ) {
 		$out = array();
-		if ( preg_match_all( '/\(\s*(?:nn?\.|nos?\.|\x{00A7})?\s*(\d{1,3})(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,3})(?!\d))?\s*\)/u', $text, $ms, PREG_SET_ORDER ) ) {
+		if ( preg_match_all( '/\(\s*(?:(?i:ibid|idem|id)\.?\s*,?\s*)?(?:nn?\.|nos?\.|\x{00A7})?\s*(\d{1,3})(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,3})(?!\d))?\s*\)/u', $text, $ms, PREG_SET_ORDER ) ) {
 			foreach ( $ms as $m ) {
 				$a     = (int) $m[1];
 				$b     = isset( $m[2] ) && '' !== $m[2] ? (int) $m[2] : 0;
