@@ -395,6 +395,8 @@ class AF_Analyzer {
 	 */
 	private static function strip_dates( $text ) {
 		$mo = '(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)';
+		// An edition year in a bracket, "(CCC, 1997)", is not a paragraph number.
+		$text = preg_replace( '/,\s*(?:19[5-9]\d|20[0-3]\d)(?=\s*\))/u', '', $text );
 		$text = preg_replace( '/\(?\s*\b\d{1,2}(?:st|nd|rd|th)?\s+' . $mo . '\.?,?\s+\d{4}\b\s*\)?\s*,?/iu', ' ', $text );
 		$text = preg_replace( '/\(?\s*\b' . $mo . '\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b\s*\)?\s*,?/iu', ' ', $text );
 		return $text;
@@ -553,10 +555,12 @@ class AF_Analyzer {
 					}
 				}
 				$named = $this->docs_in( $sent );
-				if ( 1 !== count( $named ) ) {
+				if ( 1 === count( $named ) ) {
+					$doc = $named[0];
+				} elseif ( ! preg_match( '/^[\s(\[]*$/', substr( $text, 0, $m[0][1] ) ) ) {
 					continue; // No document in the sentence: "Article 11 states" may be about anything.
 				}
-				$doc = $named[0];
+				// else the whole cite is "(para. 1776)": a bracket that is only a marked number is the author's cite of the quotation, and its document comes from the text around it.
 			}
 			$out[] = array( 'loc' => $loc, 'doc' => $doc, 'pre' => substr( $text, max( 0, $m[0][1] - 60 ), min( 60, $m[0][1] ) ) );
 		}

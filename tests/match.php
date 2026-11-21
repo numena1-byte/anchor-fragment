@@ -241,6 +241,15 @@ check( '9u (#2) after "In Test Document ... states:" -> test-document 2 only, hi
 $q = run1( $an, $get, $mine );
 check( '9v the same quotation alone', 'high' === $q[0]['status'] && 1 === count( $q[0]['typed'] ), json_encode( $q ) );
 
+// 9w. "(para. 2)" at the end of a quotation is its own cite, the document coming from the text before; an edition year is not a paragraph.
+$q = run1( $an, $get, '<p>The Test Document (TD, 1997), compiling the teaching of the Council, defines it this way:</p><blockquote>' . $riv . ' (para. 2).</blockquote>' );
+check( '9w "(para. 2)" -> test-document 2, high', 1 === count( $q ) && 'high' === $q[0]['status'] && 1 === count( $q[0]['typed'] ) && array( 2 ) === $q[0]['typed'][0]['loc'], json_encode( $q ) );
+$q = run1( $an, $get, '<p>Article 2 of the charter is long.</p><p>The Council wrote “' . $riv . '” in a long letter.</p>' );
+check( '9x a marked number outside any bracket still needs its document in the sentence', empty( $q[0]['typed'] ), json_encode( $q ) );
+$rm = new ReflectionMethod( 'AF_Analyzer', 'strip_dates' ); $rm->setAccessible( true );
+check( '9y "(CCC, 1997)" loses the year', false === strpos( $rm->invoke( null, 'The Catechism (CCC, 1997), defines' ), '1997' ), $rm->invoke( null, 'The Catechism (CCC, 1997), defines' ) );
+check( '9z "CCC 1997" without a comma is kept', false !== strpos( $rm->invoke( null, '(CCC 1997)' ), '1997' ), $rm->invoke( null, '(CCC 1997)' ) );
+
 // 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
 $bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
 $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );
