@@ -660,6 +660,12 @@ class AF_Analyzer {
 			$paras = array_values( array_filter( $paras, function ( $p ) {
 				return '' !== trim( $p );
 			} ) );
+			// A last line of its own that starts with a dash, "--- Amoris Laetitia, 72-73", is the attribution.
+			$last = count( $paras ) - 1;
+			if ( $last >= 1 && preg_match( '/^\s*(?:-{1,3}|[\x{2012}-\x{2015}\x{2212}])\s*(\S.{0,159})$/us', $paras[ $last ], $m ) && ( $this->cites( $m[1] ) || $this->marked_cites( $m[1] ) || $this->bare_cites( '(' . $m[1] . ')' ) || $this->docs_in( $m[1] ) ) ) {
+				$cite .= ' (' . trim( $m[1] ) . ')';
+				array_pop( $paras );
+			}
 			if ( $paras ) {
 				$out[] = array( 'kind' => 'blockquote', 'paras' => $paras, 'cite' => trim( $cite ), 'lead' => $lead, 'after' => $after, 'hrefs' => $links, 'declared' => $declared );
 			}

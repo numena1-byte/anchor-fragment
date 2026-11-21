@@ -250,6 +250,16 @@ $rm = new ReflectionMethod( 'AF_Analyzer', 'strip_dates' ); $rm->setAccessible( 
 check( '9y "(CCC, 1997)" loses the year', false === strpos( $rm->invoke( null, 'The Catechism (CCC, 1997), defines' ), '1997' ), $rm->invoke( null, 'The Catechism (CCC, 1997), defines' ) );
 check( '9z "CCC 1997" without a comma is kept', false !== strpos( $rm->invoke( null, '(CCC 1997)' ), '1997' ), $rm->invoke( null, '(CCC 1997)' ) );
 
+// 9aa. A dash line after a blockquote is its attribution, and it is the quotation's own cite: the text after is not read for it.
+$dash = function ( $mark ) use ( $riv ) { return '<p>In Test Document the author writes:</p><blockquote><p>“' . $riv . '”</p><p style="text-align: right;">' . $mark . ' Test Document, 2</p></blockquote><p>After this he says that “anything” (AC 3) and so on.</p>'; };
+foreach ( array( '---', '&mdash;', '&ndash;', '-' ) as $mark ) {
+	$q = run1( $an, $get, $dash( $mark ) );
+	$bq = null; foreach ( $q as $x ) { if ( 'blockquote' === $x['kind'] ) { $bq = $x; } }
+	check( '9aa "' . $mark . ' Test Document, 2" -> high, typed test-document 2 only, words unchanged', $bq && 'high' === $bq['status'] && 1 === count( $bq['typed'] ) && array( 2 ) === $bq['typed'][0]['loc'] && 1.0 === (float) $bq['best']['coverage'], json_encode( $q ) );
+}
+$q = run1( $an, $get, '<blockquote><p>' . $riv . '</p><p>- and so it goes on and on for a while longer than you would think</p></blockquote>' );
+check( '9ab a dash line that is not an attribution stays in the quotation', false !== strpos( json_encode( $q ), 'status' ) && 0 === count( $q[0]['typed'] ), json_encode( $q ) );
+
 // 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
 $bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
 $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );
