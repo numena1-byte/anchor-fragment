@@ -45,25 +45,28 @@ class AF_CLI {
 	 * @param array $assoc_args Flags.
 	 */
 	public function peek( $args, $assoc_args ) {
-		$res = AF_Service::fetch_page( $assoc_args['url'] );
+		WP_CLI::log( self::peek_text( $assoc_args['url'], isset( $assoc_args['find'] ) ? $assoc_args['find'] : '', isset( $assoc_args['width'] ) ? (int) $assoc_args['width'] : 300 ) );
+	}
+
+	/** The text that peek prints. */
+	public static function peek_text( $url, $find = '', $w = 300 ) {
+		$res = AF_Service::fetch_page( $url );
 		if ( is_wp_error( $res ) ) {
-			WP_CLI::error( $res->get_error_message() );
+			return 'Error: ' . $res->get_error_message();
 		}
 		$body = $res['body'];
-		WP_CLI::log( 'HTTP ' . $res['code'] . ', ' . strlen( $body ) . ' bytes, ' . $res['content_type'] );
-		$w    = isset( $assoc_args['width'] ) ? (int) $assoc_args['width'] : 300;
-		$find = isset( $assoc_args['find'] ) ? $assoc_args['find'] : '';
+		$out  = 'HTTP ' . $res['code'] . ', ' . strlen( $body ) . ' bytes, ' . $res['content_type'] . "\n";
 		if ( '' === $find ) {
-			WP_CLI::log( substr( $body, 0, $w ) );
-			return;
+			return $out . substr( $body, 0, $w );
 		}
 		$n = 0;
 		$o = 0;
 		while ( false !== ( $p = stripos( $body, $find, $o ) ) && $n < 3 ) {
-			WP_CLI::log( '--- at ' . $p . ': ' . substr( $body, max( 0, $p - $w ), 2 * $w ) );
-			$o = $p + 1;
+			$out .= '--- at ' . $p . ': ' . substr( $body, max( 0, $p - $w ), 2 * $w ) . "\n";
+			$o    = $p + 1;
 			$n++;
 		}
+		return $out;
 	}
 
 	public function link( $args, $assoc_args ) {
