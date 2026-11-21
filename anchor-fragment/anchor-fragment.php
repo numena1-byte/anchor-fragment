@@ -29,12 +29,12 @@ AF_Graph::init();
 if ( defined( 'WP_CLI' ) && WP_CLI ) {
 	require_once AF_DIR . 'includes/class-af-cli.php';
 	WP_CLI::add_command( 'anchor', 'AF_CLI' );
-	// Developer aid for hosts that only allow a few wp commands: set option af_dev_peek to "url|text|width", run the
+	// Developer aid for hosts that only allow a few wp commands: set option af_dev_peek to "url=text=width", run the
 	// af_dev_peek cron event, read option af_dev_peek_out.
 	add_action(
 		'af_dev_peek',
 		function () {
-			$in = explode( '|', (string) get_option( 'af_dev_peek', '' ) );
+			$in = explode( '=', (string) get_option( 'af_dev_peek', '' ) );
 			update_option( 'af_dev_peek_out', AF_CLI::peek_text( $in[0], isset( $in[1] ) ? $in[1] : '', isset( $in[2] ) ? (int) $in[2] : 300 ), false );
 		}
 	);
