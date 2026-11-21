@@ -96,6 +96,11 @@ class AF_Service {
 		return new WP_Error( 'af_redirect', 'Too many redirects.' );
 	}
 
+	/** One page from vatican.va, for the developer commands and the cross-reference probe. @return array|WP_Error */
+	public static function fetch_page( $url ) {
+		return self::http_get( $url );
+	}
+
 	/**
 	 * Parsed document, from cache or freshly fetched.
 	 * Only short excerpts and fragment words are stored, never the full text.

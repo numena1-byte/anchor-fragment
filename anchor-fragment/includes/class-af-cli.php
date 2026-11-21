@@ -27,6 +27,45 @@ class AF_CLI {
 	 * @param array $args       Positional arguments.
 	 * @param array $assoc_args Flags.
 	 */
+	/**
+	 * Print raw html around a text on a vatican.va page (developer aid).
+	 *
+	 * ## OPTIONS
+	 *
+	 * --url=<url>
+	 * : An https://www.vatican.va/ page.
+	 *
+	 * [--find=<text>]
+	 * : Show the html around the first matches of this text.
+	 *
+	 * [--width=<n>]
+	 * : Characters either side.
+	 *
+	 * @param array $args       Positional arguments.
+	 * @param array $assoc_args Flags.
+	 */
+	public function peek( $args, $assoc_args ) {
+		$res = AF_Service::fetch_page( $assoc_args['url'] );
+		if ( is_wp_error( $res ) ) {
+			WP_CLI::error( $res->get_error_message() );
+		}
+		$body = $res['body'];
+		WP_CLI::log( 'HTTP ' . $res['code'] . ', ' . strlen( $body ) . ' bytes, ' . $res['content_type'] );
+		$w    = isset( $assoc_args['width'] ) ? (int) $assoc_args['width'] : 300;
+		$find = isset( $assoc_args['find'] ) ? $assoc_args['find'] : '';
+		if ( '' === $find ) {
+			WP_CLI::log( substr( $body, 0, $w ) );
+			return;
+		}
+		$n = 0;
+		$o = 0;
+		while ( false !== ( $p = stripos( $body, $find, $o ) ) && $n < 3 ) {
+			WP_CLI::log( '--- at ' . $p . ': ' . substr( $body, max( 0, $p - $w ), 2 * $w ) );
+			$o = $p + 1;
+			$n++;
+		}
+	}
+
 	public function link( $args, $assoc_args ) {
 		$res = AF_Service::link( $args[0], $args[1], isset( $assoc_args['refresh'] ) );
 		if ( is_wp_error( $res ) ) {
