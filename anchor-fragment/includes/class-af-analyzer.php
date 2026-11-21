@@ -123,6 +123,15 @@ class AF_Analyzer {
 				$has_own   = true;
 			}
 
+			// A blockquote's cite (its footer, or a bracket at the end that was already split off) is the author's cite of it too.
+			if ( ! $has_own && '' !== $q['cite'] && ( $this->cites( $q['cite'] ) || $this->marked_cites( $q['cite'] ) || $this->bare_cites( $q['cite'] ) ) ) {
+				$has_own = true;
+			}
+			// The one document named just before the quotation ("In Amoris Laetitia, Pope Francis states:") is where a cite
+			// with only a number belongs, ahead of the document cited last.
+			$lead_named = $this->docs_in( mb_substr( $q['lead'], -90 ) );
+			$lead_doc   = 1 === count( $lead_named ) ? $lead_named[0] : null;
+
 			// Words of the quotation, with pasted paragraph numbers removed from line starts.
 			$segments = array();
 			$joined   = array();
@@ -163,7 +172,7 @@ class AF_Analyzer {
 				$typed[] = array( 'doc' => $q['declared']['doc'], 'loc' => $q['declared']['loc'] );
 			}
 			foreach ( $this->bare_cites( $has_own ? $q['cite'] : $q['cite'] . ' ' . $q['after'] ) as $loc ) {
-				$doc = $carry;
+				$doc = null !== $lead_doc ? $lead_doc : $carry;
 				if ( null === $doc && 1 === count( $hints ) ) {
 					$doc = $hints[0];
 				}
@@ -198,7 +207,7 @@ class AF_Analyzer {
 					}
 				}
 				if ( null === $doc ) {
-					$doc = $carry;
+					$doc = null !== $lead_doc ? $lead_doc : $carry;
 				}
 				if ( null === $doc && 1 === count( $hints ) ) {
 					$doc = $hints[0];

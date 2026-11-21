@@ -231,6 +231,16 @@ check( '9s "2, 5" read as two paragraphs', 'high' === $q[0]['status'] && 2 === c
 $q = run1( $an, $get, '<p>Pope said that “' . $riv . '” (Test Document, 5; 6)</p>' );
 check( '9t two wrong numbers -> still conflict', 'conflict' === $q[0]['status'], json_encode( $q ) );
 
+// 9u. A number-only cite at the end of a blockquote is the quotation's own: the later "citing AC #3" is not read for it,
+// and the document is the one named just before the quotation, not the one cited last.
+$prev = '<p>As he said: “Clay remembers the pressure of the hand that shaped it, and the potter reads in a cracked bowl the story of a hurried firing” (<em>Another Charter</em>, #3).</p>';
+$mine = '<p>In <em>Test Document</em>, the author states:</p><blockquote>' . $riv . ' (#2)</blockquote><p>And in a footnote he explains this, citing <em>AC</em> #3. But here it is not so.</p>';
+$q = run1( $an, $get, $prev . $mine );
+$last = null; foreach ( $q as $x ) { if ( 'blockquote' === $x['kind'] ) { $last = $x; } }
+check( '9u (#2) after "In Test Document ... states:" -> test-document 2 only, high', 'high' === $last['status'] && 1 === count( $last['typed'] ) && 'test-document' === $last['typed'][0]['doc'] && array( 2 ) === $last['typed'][0]['loc'], json_encode( $last ) );
+$q = run1( $an, $get, $mine );
+check( '9v the same quotation alone', 'high' === $q[0]['status'] && 1 === count( $q[0]['typed'] ), json_encode( $q ) );
+
 // 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
 $bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
 $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );
