@@ -36,6 +36,7 @@ class AF_Xref {
 		$notes   = self::archive_notes( $dom ); // code => text
 		$style   = $notes ? 'archive' : '';
 		$cur     = 0;
+		$lead    = array();
 		$perpara = array(); // paragraph => codes
 		foreach ( $xp->query( '//p|//li|//td|//dd|//div' ) as $node ) {
 			if ( $xp->query( './/p|.//li|.//td|.//div', $node )->length > 0 ) {
@@ -74,6 +75,13 @@ class AF_Xref {
 			}
 			if ( preg_match( '/^(\d{1,4})\s+\S/u', $text, $m ) ) {
 				$cur = (int) $m[1];
+				// A lead-in line just before a numbered paragraph carries the note for that paragraph's quotation too.
+				foreach ( $lead as $c ) {
+					$perpara[ $cur ][] = $c;
+				}
+				$lead = array();
+			} else {
+				$lead = false === stripos( (string) $node->getAttribute( 'style' ), 'margin-left' ) ? $ref_codes : array(); // An indented block continues the paragraph above.
 			}
 			if ( $cur ) {
 				foreach ( $ref_codes as $c ) {

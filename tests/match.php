@@ -260,6 +260,25 @@ foreach ( array( '---', '&mdash;', '&ndash;', '-' ) as $mark ) {
 $q = run1( $an, $get, '<blockquote><p>' . $riv . '</p><p>- and so it goes on and on for a while longer than you would think</p></blockquote>' );
 check( '9ab a dash line that is not an attribution stays in the quotation', false !== strpos( json_encode( $q ), 'status' ) && 0 === count( $q[0]['typed'] ), json_encode( $q ) );
 
+// 9ac. A phrase found in two documents, with the author's cite naming one of them: that one is chosen and it is not a conflict.
+$both = 'Whoever claims the cloth alone has misunderstood the loom';
+$q = run1( $an, $get, '<p>As the saying goes, “' . $both . '” (Another Charter, 2).</p>' );
+check( '9ac cite names the second document -> high, another-charter 2', 'high' === $q[0]['status'] && 'another-charter' === $q[0]['best']['doc'], json_encode( $q ) );
+$q = run1( $an, $get, '<p>As the saying goes, “' . $both . '” (Test Document, 5).</p>' );
+check( '9ad cite names the first document -> high, test-document 5', 'high' === $q[0]['status'] && 'test-document' === $q[0]['best']['doc'], json_encode( $q ) );
+$q = run1( $an, $get, '<p>As the saying goes, “' . $both . '.”</p>' );
+check( '9ae no cite -> still ambiguous', 'ambiguous' === $q[0]['status'], json_encode( $q ) );
+
+// 9af. A cite after the closing mark of an earlier long quotation belongs to that quotation, not to the next one.
+$q = run1( $an, $get, '<p>He wrote “Clay remembers the pressure of the hand that shaped it, and the potter reads in a cracked bowl the story of a hurried firing” (Another Charter, 3) — that can help us. Then he said that “The harbour pilot knows the shifting sandbars not from charts but from years of small corrections, each one made in humility before the tide.”</p>' );
+$second = null; foreach ( $q as $x ) { if ( 0 === strpos( $x['excerpt'], 'The harbour' ) ) { $second = $x; } }
+check( '9af the second quotation does not inherit the first one\'s cite', $second && 'conflict' !== $second['status'] && empty( $second['typed'] ), json_encode( $q ) );
+
+// 9ag. "(#6)" whose document is only the one cited last: when the words say otherwise it is dropped, not a conflict.
+$q = run1( $an, $get, '<p>First, “Clay remembers the pressure of the hand that shaped it, and the potter reads in a cracked bowl the story of a hurried firing” (Another Charter, #3).</p><p>He explains in a letter not in the registry, “The harbour pilot knows the shifting sandbars not from charts but from years of small corrections, each one made in humility before the tide” (#6).</p>' );
+$second = null; foreach ( $q as $x ) { if ( 0 === strpos( $x['excerpt'], 'The harbour' ) ) { $second = $x; } }
+check( '9ag a carried document is only a guess: no conflict', $second && 'conflict' !== $second['status'], json_encode( $q ) );
+
 // 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
 $bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
 $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );

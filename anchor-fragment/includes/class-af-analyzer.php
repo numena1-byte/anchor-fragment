@@ -110,7 +110,10 @@ class AF_Analyzer {
 			if ( $qparas ) {
 				$k  = count( $qparas ) - 1;
 				$sp = $this->split_trailing_cite( $qparas[ $k ] );
-				if ( '' !== $sp[1] ) {
+				// "... (Humanae Vitae, 11) ... (Catechism of the Catholic Church, 2370).”": a quotation that already holds a cite of
+				// that kind is quoting its source's own cites, so the last bracket is part of it, not the author's.
+				$embedded = '' !== $sp[1] && preg_match( '/[(\[](?:cf\.\s*)?\p{Lu}[\p{L}\s.\'\x{2019}]+,\s*(?:no\.\s*|n\.\s*|#)?\d{1,4}[)\]]/u', $sp[0] );
+				if ( '' !== $sp[1] && ! $embedded ) {
 					$qparas[ $k ] = $sp[0];
 					$q['cite']    = trim( $q['cite'] . ' ' . $sp[1] );
 					$has_own      = true;
@@ -129,7 +132,25 @@ class AF_Analyzer {
 			}
 			// The one document named just before the quotation ("In Amoris Laetitia, Pope Francis states:") is where a cite
 			// with only a number belongs, ahead of the document cited last.
+			// A cite right after the closing mark of an earlier long quotation in the text before this one, "...in his depths”
+			// (CCC 1776) — that can help us", is that quotation's own, not this one's.
+			$q['lead'] = preg_replace_callback(
+				'/([\x{201D}"])(\s*[(\[](?:[^()\[\]]|\([^()]*\)){1,160}[)\]])/us',
+				function ( $m ) use ( $q ) {
+					$pos    = mb_strpos( $q['lead'], $m[0] );
+					$before = false === $pos ? '' : mb_substr( $q['lead'], max( 0, $pos - 40 ), min( 40, $pos ) );
+					$inner  = trim( $m[2], " \t\n()[]" );
+					if ( mb_strlen( $before ) >= 40 && ! preg_match( '/[\x{201C}"]/u', $before ) && ( $this->cites( $inner ) || $this->marked_cites( $inner ) || $this->bare_cites( '(' . $inner . ')' ) ) ) {
+						return $m[1];
+					}
+					return $m[0];
+				},
+				$q['lead']
+			);
 			$lead_named = $this->docs_in( mb_substr( $q['lead'], -90 ) );
+			if ( 1 !== count( $lead_named ) && ! $lead_named ) {
+				$lead_named = $this->docs_in( $q['lead'] ); // Named earlier in the same stretch of text, with none nearer.
+			}
 			$lead_doc   = 1 === count( $lead_named ) ? $lead_named[0] : null;
 
 			// Words of the quotation, with pasted paragraph numbers removed from line starts.
@@ -206,17 +227,23 @@ class AF_Analyzer {
 						continue;
 					}
 				}
+				$guess = false;
 				if ( null === $doc ) {
-					$doc = null !== $lead_doc ? $lead_doc : $carry;
+					$doc = $lead_doc;
+					if ( null === $doc && null !== $carry ) {
+						$doc   = $carry;
+						$guess = true; // Only the document cited last: counts when the words agree.
+					}
 				}
 				if ( null === $doc && 1 === count( $hints ) ) {
 					$doc = $hints[0];
 				}
 				if ( null === $doc ) {
-					$doc = $near;
+					$doc   = $near;
+					$guess = null !== $doc;
 				}
 				if ( null !== $doc && $mc['loc'][0] <= $this->docs[ $doc ]['max'] ) {
-					$typed[] = array( 'doc' => $doc, 'loc' => $mc['loc'] );
+					$typed[] = $guess ? array( 'doc' => $doc, 'loc' => $mc['loc'], 'soft' => true ) : array( 'doc' => $doc, 'loc' => $mc['loc'] );
 				}
 			}
 			foreach ( $typed as $t ) {
@@ -258,7 +285,12 @@ class AF_Analyzer {
 				// footer is the one the author means. A name later in the text, as in "Dilexi te confirms this,
 				// adding that ...", introduces the next sentence and is only a general hint.
 				$named_before = array_values( array_unique( array_merge( $this->docs_in( mb_substr( $q['lead'], -90 ) ), $this->docs_in( $q['cite'] ) ) ) );
-				$rank = function ( $doc ) use ( $hints, $tag_docs, $named_before ) {
+				$rank = function ( $doc, $locs = array() ) use ( $hints, $tag_docs, $named_before, $typed ) {
+					foreach ( $typed as $t ) {
+						if ( empty( $t['soft'] ) && $t['doc'] === $doc && ! empty( $t['loc'] ) && array_intersect( $t['loc'], $locs ) ) {
+							return 4; // The author typed exactly this paragraph, and the words fit it as well as any.
+						}
+					}
 					if ( in_array( $doc, $named_before, true ) ) {
 						return 3;
 					}
@@ -266,19 +298,21 @@ class AF_Analyzer {
 				};
 				$top_rank = -1;
 				foreach ( $cands as $c ) {
-					if ( $rank( $c['doc'] ) > $top_rank ) {
-						$top_rank = $rank( $c['doc'] );
+					if ( $rank( $c['doc'], $c['locators'] ) > $top_rank ) {
+						$top_rank = $rank( $c['doc'], $c['locators'] );
 						$best     = $c;
 					}
 				}
 				$tied      = 0;
 				foreach ( $cands as $c ) {
-					if ( $rank( $c['doc'] ) === $top_rank ) {
+					if ( $rank( $c['doc'], $c['locators'] ) === $top_rank ) {
 						$tied++;
 					}
 				}
 				$ambiguous = $tied > 1 && $best['coverage'] >= self::ACCEPT;
-				if ( ! $ambiguous && 3 === $top_rank && count( $cands ) > 1 ) {
+				if ( ! $ambiguous && 4 === $top_rank && count( $cands ) > 1 ) {
+					$resolved = 'several documents contain these words; the paragraph the author cited was chosen';
+				} elseif ( ! $ambiguous && 3 === $top_rank && count( $cands ) > 1 ) {
 					$resolved = 'several documents contain these words; the one named just before the quotation was chosen';
 				}
 				foreach ( $scores as $s ) {
