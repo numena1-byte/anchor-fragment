@@ -118,7 +118,7 @@ class AF_Analyzer {
 			}
 
 			// The same when the cite follows the closing quotation mark: "...evolutionary one” (GS 5). The Catechism says ...".
-			if ( ! $has_own && preg_match( '/^[\s\x{201D}\x{2019}"\']*[(\[]([^()\[\]]{1,80})[)\]]/us', $q['after'], $am ) && ( $this->cites( $am[1] ) || $this->marked_cites( $am[1] ) || $this->bare_cites( '(' . $am[1] . ')' ) ) ) {
+			if ( ! $has_own && preg_match( '/^[\s\x{201D}\x{2019}"\']*[(\[]((?:[^()\[\]]|\([^()]*\)){1,160})[)\]]/us', $q['after'], $am ) && ( $this->cites( $am[1] ) || $this->marked_cites( $am[1] ) || $this->bare_cites( '(' . $am[1] . ')' ) ) ) {
 				$q['cite'] = trim( $q['cite'] . ' (' . $am[1] . ')' );
 				$has_own   = true;
 			}
@@ -369,6 +369,17 @@ class AF_Analyzer {
 
 	/* ---------------------------------------------------------------- text helpers */
 
+	/**
+	 * Remove dates, so that "Evangelii Gaudium (24 November 2013), 27" is read as paragraph 27 and not 24. Handles
+	 * "24 November 2013" and "November 24, 2013", with the brackets and comma that usually go with them.
+	 */
+	private static function strip_dates( $text ) {
+		$mo = '(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)';
+		$text = preg_replace( '/\(?\s*\b\d{1,2}(?:st|nd|rd|th)?\s+' . $mo . '\.?,?\s+\d{4}\b\s*\)?\s*,?/iu', ' ', $text );
+		$text = preg_replace( '/\(?\s*\b' . $mo . '\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b\s*\)?\s*,?/iu', ' ', $text );
+		return $text;
+	}
+
 	private static function straight( $s ) {
 		return str_replace(
 			array( "\xE2\x80\x99", "\xE2\x80\x98", "\xE2\x80\x9C", "\xE2\x80\x9D", "\xC2\xA0" ),
@@ -430,6 +441,7 @@ class AF_Analyzer {
 	 * @return array[] each { doc, loc[] }
 	 */
 	private function cites( $text ) {
+		$text  = self::strip_dates( $text );
 		$lite  = self::lite( $text );
 		$plain = self::straight( $text );
 		$num   = '(?:\s*[,.:]?\s*(?:nn?\.|nos?\.|no|n|\x{00A7}+|#|paras?\.?|paragraphs?)?\s*)(\d{1,4})(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,4})(?!\d))?';
@@ -468,7 +480,7 @@ class AF_Analyzer {
 	 * @return array [ words, cite ]
 	 */
 	private function split_trailing_cite( $p ) {
-		if ( ! preg_match( '/^(.*?)[\s\x{201D}\x{2019}"\']*[(\[]([^()\[\]]{1,80})[)\]]\s*[.,;:]?\s*$/us', $p, $m ) || '' === trim( $m[1] ) ) {
+		if ( ! preg_match( '/^(.*?)[\s\x{201D}\x{2019}"\']*[(\[]((?:[^()\[\]]|\([^()]*\)){1,160})[)\]]\s*[.,;:]?\s*$/us', $p, $m ) || '' === trim( $m[1] ) ) {
 			return array( $p, '' );
 		}
 		$cap = $m[2];

@@ -210,6 +210,17 @@ $q = run1( $an, $get, '<p>The signer adheres to some 11 statements. Article 11 s
 $locs = array_map( function ( $t ) { return $t['loc'][0]; }, $q[0]['typed'] );
 check( '15g text before and after the quotation are read separately -> typed 4 only, not 11', array( 4 ) === $locs, json_encode( $q[0]['typed'] ) );
 
+// 9o. A date in the cite is not a paragraph number.
+foreach ( array(
+	'(POPE FRANCIS, APOSTOLIC EXHORTATION TEST DOCUMENT, 24 NOVEMBER 2013, 2)' => '9o upper-case style with the date',
+	'(Apostolic Exhortation Test Document (24 November 2013), 2: AAS 105 (2013), 1031)' => '9p Vatican footnote style with the date',
+	'(Test Document, November 24, 2013, 2)' => '9q month-first date',
+) as $cite => $label ) {
+	$q = run1( $an, $get, '<p>“' . $riv . '” ' . $cite . '</p>' );
+	$ok = 1 === count( $q ) && 'high' === $q[0]['status'] && 1 === count( $q[0]['typed'] ) && array( 2 ) === $q[0]['typed'][0]['loc'];
+	check( $label . ' -> typed 2, high', $ok, json_encode( $q ) );
+}
+
 // 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
 $bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
 $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );
