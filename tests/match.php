@@ -221,6 +221,16 @@ foreach ( array(
 	check( $label . ' -> typed 2, high', $ok, json_encode( $q ) );
 }
 
+// 9r. A list of locators in one cite: the one that agrees with the words wins, the other is noted.
+foreach ( array( '(Test Document, 5; 2)', '(Test Document 2; 5)' ) as $cite ) {
+	$q = run1( $an, $get, '<p>Pope said that “' . $riv . '” ' . $cite . '</p>' );
+	check( '9r ' . $cite . ' -> high, both numbers read, the wrong one noted', 'high' === $q[0]['status'] && 2 === count( $q[0]['typed'] ) && false !== strpos( $q[0]['note'], 'cited test-document 5' ), json_encode( $q ) );
+}
+$q = run1( $an, $get, '<p>Pope said that “' . $riv . '” (Test Document 2, 5)</p>' );
+check( '9s "2, 5" read as two paragraphs', 'high' === $q[0]['status'] && 2 === count( $q[0]['typed'] ), json_encode( $q ) );
+$q = run1( $an, $get, '<p>Pope said that “' . $riv . '” (Test Document, 5; 6)</p>' );
+check( '9t two wrong numbers -> still conflict', 'conflict' === $q[0]['status'], json_encode( $q ) );
+
 // 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
 $bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
 $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );

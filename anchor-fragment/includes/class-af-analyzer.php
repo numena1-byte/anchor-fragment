@@ -310,7 +310,18 @@ class AF_Analyzer {
 				}
 				if ( $typed_here ) {
 					$status = $agree ? 'high' : 'conflict';
-					if ( ! $agree ) {
+					if ( $agree ) {
+						// "(EG, 30; 33)": one number agrees with the words, another does not.
+						$extra = array();
+						foreach ( $typed_here as $t ) {
+							if ( ! ( ( null === $t['doc'] || $t['doc'] === $best['doc'] ) && array_intersect( $t['loc'], $best['locators'] ) ) ) {
+								$extra[] = ( $t['doc'] ? $t['doc'] : '?' ) . ' ' . implode( ',', $t['loc'] );
+							}
+						}
+						if ( $extra ) {
+							$note = 'cited ' . implode( '; ', $extra ) . ' too, which the words do not match; the words match ' . $best['doc'] . ' ' . implode( ',', $best['locators'] );
+						}
+					} else {
 						$bits = array();
 						foreach ( $typed_here as $t ) {
 							$bits[] = ( $t['doc'] ? $t['doc'] : '?' ) . ' ' . implode( ',', $t['loc'] );
@@ -444,17 +455,26 @@ class AF_Analyzer {
 		$text  = self::strip_dates( $text );
 		$lite  = self::lite( $text );
 		$plain = self::straight( $text );
-		$num   = '(?:\s*[,.:]?\s*(?:nn?\.|nos?\.|no|n|\x{00A7}+|#|paras?\.?|paragraphs?)?\s*)(\d{1,4})(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,4})(?!\d))?';
+		$num   = '(?:\s*[,.:]?\s*(?:nn?\.|nos?\.|no|n|\x{00A7}+|#|paras?\.?|paragraphs?)?\s*)(\d{1,4})(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,4})(?!\d))?((?:\s*[;,]\s*(?:nn?\.|nos?\.|\x{00A7}+)?\s*\d{1,4}(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*\d{1,4}(?!\d))?)*)';
 		$out   = array();
 		$docs  = $this->docs;
-		$add   = function ( $doc, $m ) use ( &$out, $docs ) {
-			$a   = (int) $m[1];
+		$add1  = function ( $doc, $a, $b ) use ( &$out, $docs ) {
+			$a = (int) $a;
 			if ( $a < 1 || $a > $docs[ $doc ]['max'] ) {
 				return; // Not a paragraph number of this document, e.g. a year.
 			}
-			$b   = isset( $m[2] ) && '' !== $m[2] ? (int) $m[2] : 0;
+			$b   = (int) $b;
 			$loc = ( $b > $a && $b - $a <= 12 ) ? range( $a, $b ) : array( $a );
 			$out[ $doc . ':' . implode( ',', $loc ) ] = array( 'doc' => $doc, 'loc' => $loc );
+		};
+		$add   = function ( $doc, $m ) use ( $add1 ) {
+			$add1( $doc, $m[1], isset( $m[2] ) ? $m[2] : 0 );
+			// "(EG, 30; 33)": the numbers after the first belong to the same document.
+			if ( ! empty( $m[3] ) && preg_match_all( '/(\d{1,4})(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,4})(?!\d))?/u', $m[3], $more, PREG_SET_ORDER ) ) {
+				foreach ( $more as $x ) {
+					$add1( $doc, $x[1], isset( $x[2] ) ? $x[2] : 0 );
+				}
+			}
 		};
 		foreach ( $this->docs as $id => $d ) {
 			if ( '' !== $d['short'] && preg_match_all( '/\b' . preg_quote( $d['short'], '/' ) . '\b' . $num . '/u', $plain, $ms, PREG_SET_ORDER ) ) {
