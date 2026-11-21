@@ -219,6 +219,28 @@ class AF_Rest {
 		);
 		register_rest_route(
 			'anchorfrag/v1',
+			'/xref/step',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'handle_xref_step' ),
+				'permission_callback' => function () {
+					return current_user_can( 'manage_options' );
+				},
+			)
+		);
+		register_rest_route(
+			'anchorfrag/v1',
+			'/xref/explain',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( __CLASS__, 'handle_xref_explain' ),
+				'permission_callback' => function () {
+					return current_user_can( 'edit_posts' );
+				},
+			)
+		);
+		register_rest_route(
+			'anchorfrag/v1',
 			'/graph',
 			array(
 				'methods'             => 'GET',
@@ -279,6 +301,20 @@ class AF_Rest {
 			}
 		}
 		return rest_ensure_response( $res );
+	}
+
+	public static function handle_xref_step( WP_REST_Request $req ) {
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		}
+		$res = AF_Xref::step( 25.0, (bool) $req['restart'] );
+		return is_wp_error( $res ) ? $res : rest_ensure_response( $res );
+	}
+
+	public static function handle_xref_explain( WP_REST_Request $req ) {
+		AF_Graph::maybe_install();
+		$st = (string) $req['status'];
+		return rest_ensure_response( AF_Xref::explain( in_array( $st, array( 'conflict', 'ambiguous' ), true ) ? $st : 'conflict' ) );
 	}
 
 	public static function handle_graph_confirm( WP_REST_Request $req ) {
@@ -423,6 +459,8 @@ class AF_Rest {
 			'rebuild' => rest_url( 'anchorfrag/v1/graph/rebuild' ),
 			'review'  => rest_url( 'anchorfrag/v1/graph/review' ),
 			'confirm' => rest_url( 'anchorfrag/v1/graph/confirm' ),
+			'xstep'   => rest_url( 'anchorfrag/v1/xref/step' ),
+			'xexplain' => rest_url( 'anchorfrag/v1/xref/explain' ),
 			'nonce' => wp_create_nonce( 'wp_rest' ),
 		);
 		?>
@@ -566,6 +604,15 @@ class AF_Rest {
 			</form>
 			<div id="af-review-out" style="margin-top:1em;max-width:70em"></div>
 
+			<h3>Catechism footnotes (probe)</h3>
+			<p>The Catechism's footnotes name the documents each paragraph quotes ("LG 1; cf. Mk 16:15"). A quotation of Lumen Gentium 1 can match Catechism 748 as well, so an author who cites one while the words match the other is not wrong. This reads the footnotes (about 130 pages from vatican.va, a few minutes; only the citations are kept, none of the text), then checks the recorded conflicts against them.</p>
+			<p><button class="button" id="af-xref-read">Read Catechism footnotes</button>
+			<button class="button" id="af-xref-restart">Start again</button>
+			<button class="button button-primary" id="af-xref-check">Check conflicts</button>
+			<select id="af-xref-status"><option value="conflict">conflicts</option><option value="ambiguous">ambiguous</option></select>
+			<span id="af-xref-msg" style="margin-left:1em"></span></p>
+			<div id="af-xref-out" style="margin-top:1em;max-width:70em"></div>
+
 			<hr>
 			<h2>Match posts</h2>
 			<p>Enter post IDs separated by commas. For each post, the plugin finds the quotations and works out which paragraph of which document each came from. Results are shown below and saved on the server. The first run fetches any documents not yet indexed, which can take about 15 seconds.</p>
@@ -612,6 +659,44 @@ class AF_Rest {
 					step(true);
 				});
 			});
+
+			/* ---- Catechism footnotes probe ---- */
+			(function () {
+				var msg = document.getElementById('af-xref-msg'), out = document.getElementById('af-xref-out');
+				var rd = document.getElementById('af-xref-read'), rs = document.getElementById('af-xref-restart'), ck = document.getElementById('af-xref-check');
+				if (!rd) { return; }
+				function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+				function step(restart) {
+					var q = restart ? '?restart=1' : '';
+					return fetch(cfg.xstep + q, { method: 'POST', headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' })
+						.then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+						.then(function (res) {
+							if (!res.ok) { msg.textContent = 'Stopped: ' + (res.body.message || 'request failed') + ' Press the button to carry on.'; rd.disabled = rs.disabled = false; return; }
+							var b = res.body;
+							msg.textContent = b.done + ' of ' + b.total + ' pages; ' + b.refs + ' footnote marks, ' + b.notes + ' notes, ' + b.paragraphs + ' paragraphs cite documents in the registry. Markup: ' + JSON.stringify(b.styles) + (b.errors.length ? ' Problems: ' + b.errors.join('; ') : '');
+							if (b.sample) { out.innerHTML = '<p>No footnote marks recognised on some text pages. Markup sample:</p><pre style="white-space:pre-wrap">' + esc(b.sample) + '</pre>'; }
+							if (b.finished) { rd.disabled = rs.disabled = false; msg.textContent += ' Done.'; return; }
+							return step(false);
+						})
+						.catch(function (err) { msg.textContent = 'Request failed (' + err + '). Press the button to carry on.'; rd.disabled = rs.disabled = false; });
+				}
+				rd.addEventListener('click', function () { rd.disabled = rs.disabled = true; msg.textContent = 'Starting…'; step(false); });
+				rs.addEventListener('click', function () { rd.disabled = rs.disabled = true; msg.textContent = 'Starting…'; step(true); });
+				ck.addEventListener('click', function () {
+					msg.textContent = 'Checking…'; out.innerHTML = '';
+					fetch(cfg.xexplain + '?status=' + document.getElementById('af-xref-status').value, { headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' })
+						.then(function (r) { return r.json(); })
+						.then(function (j) {
+							var c = j.counts;
+							msg.textContent = j.map_size + ' Catechism paragraphs in the footnote map.';
+							var h = '<p><strong>Explained exactly</strong> (the Catechism paragraph cites that very paragraph): ' + c.exact + '<br><strong>Explained by document</strong> (it cites the document, another paragraph): ' + c.document + '<br><strong>Not explained</strong>: ' + c.none + '<br>Not a Catechism conflict: ' + c.other + '</p>';
+							h += '<table class="widefat striped"><thead><tr><th>Result</th><th>Post</th><th>Edges</th><th>Footnote</th></tr></thead><tbody>';
+							j.groups.forEach(function (g) { h += '<tr><td>' + esc(g.verdict) + '</td><td><a href="' + esc(g.link) + '" target="_blank">' + esc(g.title) + '</a></td><td>' + g.edges.map(esc).join('<br>') + '</td><td>' + esc(g.why) + '</td></tr>'; });
+							out.innerHTML = h + '</tbody></table>';
+						})
+						.catch(function (err) { msg.textContent = 'Failed (' + err + ').'; });
+				});
+			})();
 
 			/* ---- check this server ---- */
 			var chk = document.getElementById('af-check');

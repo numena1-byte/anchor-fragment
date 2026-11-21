@@ -462,6 +462,11 @@ class AF_Analyzer {
 	 *
 	 * @return array[] each { doc, loc[] }
 	 */
+	/** Citations in a short text, as { doc, loc[] }, for documents in the registry. */
+	public function refs( $text ) {
+		return $this->cites( $text );
+	}
+
 	private function cites( $text ) {
 		$text  = self::strip_dates( $text );
 		$lite  = self::lite( $text );
