@@ -33,11 +33,10 @@ class AF_Xref {
 			$n->parentNode->removeChild( $n );
 		}
 
-		$blocks  = array();
-		$notes   = array(); // code => text
+		$notes   = self::archive_notes( $dom ); // code => text
+		$style   = $notes ? 'archive' : '';
 		$cur     = 0;
 		$perpara = array(); // paragraph => codes
-		$style   = '';
 		foreach ( $xp->query( '//p|//li|//td|//dd|//div' ) as $node ) {
 			if ( $xp->query( './/p|.//li|.//td|.//div', $node )->length > 0 ) {
 				continue; // A container of other blocks.
@@ -54,8 +53,7 @@ class AF_Xref {
 				$name = $a->getAttribute( 'name' ) ?: $a->getAttribute( 'id' );
 				$num  = trim( $a->textContent );
 				if ( 0 === strpos( $href, '#-' ) && preg_match( '/^\[?\d{1,4}\]?$/', $num ) ) {
-					$note_codes[] = substr( $href, 2 );
-					$style        = $style ?: 'archive';
+					$style = $style ?: 'archive'; // The note itself: read by archive_notes().
 				} elseif ( 0 === strpos( $href, '#$' ) && preg_match( '/^\[?\d{1,4}\]?$/', $num ) ) {
 					$ref_codes[] = substr( $href, 2 );
 					$style       = $style ?: 'archive';
@@ -94,6 +92,47 @@ class AF_Xref {
 			}
 		}
 		return array( 'paras' => $paras, 'refs' => $refs, 'notes' => count( $notes ), 'style' => $style );
+	}
+
+	/**
+	 * The notes of an archive page. They are not blocks of their own: after the text come the numbers as links
+	 * ("#-code") each followed by its note, up to the next line break.
+	 */
+	private static function archive_notes( DOMDocument $dom ) {
+		$notes = array();
+		$cur   = null;
+		$begun = false;
+		$walk  = function ( DOMNode $n ) use ( &$walk, &$notes, &$cur, &$begun ) {
+			foreach ( $n->childNodes as $c ) {
+				if ( XML_ELEMENT_NODE === $c->nodeType ) {
+					$tag = strtolower( $c->nodeName );
+					if ( 'a' === $tag && 0 === strpos( $c->getAttribute( 'href' ), '#-' ) && preg_match( '/^\[?\d{1,4}\]?$/', trim( $c->textContent ) ) ) {
+						$cur           = substr( $c->getAttribute( 'href' ), 2 );
+						$notes[ $cur ] = '';
+						$begun         = false;
+						continue; // Its own number is not part of the note.
+					}
+					if ( 'br' === $tag || 'hr' === $tag ) {
+						if ( $begun ) {
+							$cur = null;
+						}
+						continue;
+					}
+					if ( 'a' === $tag && null !== $cur && ! $begun ) {
+						continue; // Page navigation links are not notes.
+					}
+					$walk( $c );
+				} elseif ( XML_TEXT_NODE === $c->nodeType && null !== $cur ) {
+					$t = trim( preg_replace( '/\s+/u', ' ', str_replace( "\xC2\xA0", ' ', $c->nodeValue ) ) );
+					if ( '' !== $t ) {
+						$notes[ $cur ] = trim( $notes[ $cur ] . ' ' . $t );
+						$begun         = true;
+					}
+				}
+			}
+		};
+		$walk( $dom );
+		return array_filter( $notes, 'strlen' );
 	}
 
 	/** Footnote texts to "document:locator" strings, for the documents in the registry. */

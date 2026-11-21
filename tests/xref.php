@@ -4,23 +4,25 @@ $GLOBALS['af_plugin_dir'] = $argv[1];
 require __DIR__ . '/stubs.php';
 foreach ( array( 'parser', 'analyzer', 'xref' ) as $f ) { require AF_DIR . "includes/class-af-$f.php"; }
 // The Holy See's archive pages: a reference links to "#$code", its note to "#-code".
-$archive = '<html><body>
-<p><a name="-YU" href="#$YU">135</a></p>
-<p>748 Christ is the light of humanity; and it is the desire of this sacred Council <a name="-YT" href="#$YT">134</a> to bring light to all.</p>
-<p>749 The Holy Spirit is at work <a name="-YV" href="#$YV">136</a> and <a name="-YW" href="#$YW">137</a>.</p>
-<p>Another part of the same paragraph <a name="-YX" href="#$YX">138</a>.</p>
-<p>750 No notes here.</p>
-<p><a name="$YT" href="#-YT">134</a> GS 22; cf. Mk 1:1.</p>
-<p><a name="$YU" href="#-YU">135</a> LG 1; cf. Mk 16:15.</p>
-<p><a name="$YV" href="#-YV">136</a> Roman Catechism I, 10, 1.</p>
-<p><a name="$YW" href="#-YW">137</a> St. Hippolytus, Trad. Ap. 35: SCh 11, 118.</p>
-<p><a name="$YX" href="#-YX">138</a> LG 4.</p>
-</body></html>';
+$archive = '<html><body><table><tbody><tr><td><a href="_INDEX.HTM"><b>Help</b></a> <a href="__P25.HTM"><b>Previous</b></a></td></tr></tbody></table><hr size="1">
+<p class="MsoNormal">748
+"Christ is the light of humanity; and it is, accordingly, the desire of this sacred Council."<font face="Verdana" size="2"><sup><a name="-YU" href="#$YU">135</a></sup></font>
+These words open the Dogmatic Constitution on the Church.<font><sup><a name="-YT" href="#$YT">134</a></sup></font></p>
+<p class="MsoNormal">749
+The Holy Spirit is at work<font><sup><a name="-YV" href="#$YV">136</a></sup></font> and<font><sup><a name="-YW" href="#$YW">137</a></sup></font>.</p>
+<p class="MsoNormal">Another part of the same paragraph<font><sup><a name="-YX" href="#$YX">138</a></sup></font>.</p>
+<p class="MsoNormal">750 No notes here.</p>
+<p class="MsoNormal"><b></b></p><br><br><hr size="1" width="30%" align="left/"><font size="3"><b><a name="$YT" href="#-YT">134</a></b></font><font face="Verdana" size="1"> GS 22; cf. Mk 1:1.<br>
+<br><br></font><font size="3"><b><a name="$YU" href="#-YU">135</a></b></font><font face="Verdana" size="1"> LG 1; cf. Mk 16:15.<br>
+<br><br></font><font size="3"><b><a name="$YV" href="#-YV">136</a></b></font><font face="Verdana" size="1"> Roman Catechism I, 10, 1.<br>
+<br><br></font><font size="3"><b><a name="$YW" href="#-YW">137</a></b></font><font face="Verdana" size="1"> St. Hippolytus, Trad. Ap. 35: SCh 11, 118.<br>
+<br><br></font><font size="3"><b><a name="$YX" href="#-YX">138</a></b></font><font face="Verdana" size="1"> LG 4.<br>
+<br><br></font><table><tr><td><a href="__P25.HTM"><b>Previous</b></a> <a href="__P27.HTM"><b>Next</b></a></td></tr></table></body></html>';
 $p = AF_Xref::parse_page( $archive );
 check( 'archive style recognised', 'archive' === $p['style'], json_encode( $p ) );
-check( '748 has the note of its own mark', array( 'GS 22; cf. Mk 1:1.' ) === $p['paras'][748], json_encode( $p['paras'] ) );
-check( '749 has two notes, and the continuation paragraph after it adds a third', 3 === count( $p['paras'][749] ) && 'LG 4.' === $p['paras'][749][2], json_encode( $p['paras'] ) );
-check( 'a paragraph without marks has nothing; the note blocks do not start paragraphs', ! isset( $p['paras'][750] ) && ! isset( $p['paras'][134] ) && ! isset( $p['paras'][135] ), json_encode( $p['paras'] ) );
+check( '748 has the notes of its two marks, the second after a line of text', array( 'LG 1; cf. Mk 16:15.', 'GS 22; cf. Mk 1:1.' ) === $p['paras'][748], json_encode( $p['paras'] ) );
+check( '749 has two notes, and the continuation paragraph after it adds a third', 3 === count( $p['paras'][749] ) && 'LG 4.' === $p['paras'][749][2] && 'St. Hippolytus, Trad. Ap. 35: SCh 11, 118.' === $p['paras'][749][1], json_encode( $p['paras'] ) );
+check( 'a paragraph without marks has nothing; the note blocks do not start paragraphs', ! isset( $p['paras'][750] ) && ! isset( $p['paras'][134] ) && ! isset( $p['paras'][135] ) && ! strpos( json_encode( $p['paras'] ), 'Previous' ), json_encode( $p['paras'] ) );
 
 // Word-style pages.
 $word = '<html><body><p>301 Text of the paragraph<a href="#_ftn1" name="_ftnref1">[1]</a> goes on.</p><p><a href="#_ftnref1" name="_ftn1">[1]</a> DV 7; cf. LG 20.</p></body></html>';
