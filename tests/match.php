@@ -318,6 +318,13 @@ check( '9ak the link names the document although the lead names another -> high'
 $q = run1( $an, $get, '<p>Francis writes,</p><blockquote><p>' . $riv . '</p></blockquote><p>The teachings point the way and guide our actions (cf. AC 3). But God rules us.</p>' );
 check( '9al a side "(cf. AC 3)" after the quotation that the words do not support -> no conflict', 'conflict' !== $q[0]['status'] && empty( $q[0]['typed'] ), json_encode( $q ) );
 
+// 9am. An unattributed quotation after two cited ones is not given their cites (the cites belong to the quotations before them).
+$bq3 = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
+$q = run1( $an, $get, '<p>Another Charter wrote that it was “' . $acx . '” (AC 3). But the Test Document is blunter. While reaffirming it, the council says “' . $riv . '” (TD 2). This is because the table now offers “' . $bq3 . '” Once again, the council goes a step further.</p>' );
+$third = end( $q );
+check( '9am the third, unattributed quotation takes no cite from the two before it', 3 === count( $q ) && empty( $third['typed'] ) && 'conflict' !== $third['status'], json_encode( $q ) );
+check( '9am2 the first two keep their own cites and are confirmed', 'high' === $q[0]['status'] && 'high' === $q[1]['status'], json_encode( array_column( $q, 'status' ) ) );
+
 // 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
 $bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
 $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );

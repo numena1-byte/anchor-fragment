@@ -723,19 +723,31 @@ class AF_Analyzer {
 
 		// The links of a paragraph that stand after a quotation and before the next one belong to that quotation; when there
 		// are none, the paragraph's links all count.
-		$near_links = function ( $p, $text, $end, $limit ) use ( $xp, $hrefs ) {
-			$own = array();
+		// Where the cite that follows a quotation ends: "(MH 192)" right after the closing mark belongs to that quotation.
+		$cite_end = function ( $text, $pos ) {
+			if ( preg_match( '/\G[\s\x{201D}\x{2019}"\']*[(\[]((?:[^()\[\]]|\([^()]*\)){1,160})[)\]]/u', $text, $m, 0, $pos ) && preg_match( '/\d/', $m[1] ) ) {
+				return $pos + strlen( $m[0] );
+			}
+			return $pos;
+		};
+		// The links of a paragraph, each with where it stands in the text, so a quotation gets the links between the
+		// previous quotation's cite and the next quotation, not those of its neighbours.
+		$links_at = function ( $p, $text ) use ( $xp ) {
+			$out    = array();
+			$cursor = 0;
 			foreach ( $xp->query( './/a[@href]', $p ) as $a ) {
 				$t = self::clean( $a->textContent );
 				if ( '' === $t ) {
 					continue;
 				}
-				$pos = strpos( $text, $t, $end );
-				if ( false !== $pos && $pos < $limit && $pos - $end < 250 ) {
-					$own[] = $a->getAttribute( 'href' );
+				$pos = strpos( $text, $t, $cursor );
+				if ( false === $pos ) {
+					continue;
 				}
+				$cursor = $pos + strlen( $t );
+				$out[]  = array( $pos, $a->getAttribute( 'href' ) );
 			}
-			return $own ? $own : $hrefs( $p );
+			return $out;
 		};
 
 		$out = array();
@@ -800,6 +812,7 @@ class AF_Analyzer {
 			if ( ! preg_match_all( '/[\x{201C}"\x{00AB}]([^\x{201D}"\x{00BB}]{40,700})[\x{201D}"\x{00BB}]/u', $text, $ms, PREG_SET_ORDER | PREG_OFFSET_CAPTURE ) ) {
 				continue;
 			}
+			$at = $links_at( $p, $text );
 			foreach ( $ms as $i => $m ) {
 				$quote = $m[1][0];
 				if ( count( AF_Matcher::tokens( $quote ) ) < AF_Matcher::MIN_TOKENS ) {
@@ -807,13 +820,26 @@ class AF_Analyzer {
 				}
 				$start = $m[0][1];
 				$end   = $start + strlen( $m[0][0] );
+				// This quotation's own stretch of the paragraph: from the cite of the quotation before it to the start of the next.
+				$from = 0;
+				if ( $i > 0 ) {
+					$pe   = $ms[ $i - 1 ][0][1] + strlen( $ms[ $i - 1 ][0][0] );
+					$from = $cite_end( $text, $pe );
+				}
+				$to    = isset( $ms[ $i + 1 ] ) ? $ms[ $i + 1 ][0][1] : strlen( $text );
+				$own   = array();
+				foreach ( $at as $l ) {
+					if ( $l[0] >= $from && $l[0] < $to ) {
+						$own[] = $l[1];
+					}
+				}
 				$out[] = array(
 					'kind'  => 'inline',
 					'paras' => array( $quote ),
 					'cite'  => '',
-					'lead'  => mb_substr( substr( $text, 0, $start ), -300 ),
-					'after' => mb_substr( substr( $text, $end ), 0, 200 ),
-					'hrefs' => $near_links( $p, $text, $end, isset( $ms[ $i + 1 ] ) ? $ms[ $i + 1 ][0][1] : strlen( $text ) ),
+					'lead'  => mb_substr( substr( $text, $from, max( 0, $start - $from ) ), -300 ),
+					'after' => mb_substr( substr( $text, $end, max( 0, $to - $end ) ), 0, 200 ),
+					'hrefs' => $own,
 				);
 			}
 		}
