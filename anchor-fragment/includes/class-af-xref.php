@@ -157,6 +157,31 @@ class AF_Xref {
 	}
 
 	/**
+	 * The footnote map: the one shipped with the plugin (data/catechism-xref.json) plus anything this site read itself.
+	 * Catechism paragraph => [ "document:locator", ... ]
+	 */
+	public static function map() {
+		static $shipped = null;
+		if ( null === $shipped ) {
+			$shipped = array();
+			$file    = AF_DIR . 'data/catechism-xref.json';
+			if ( is_readable( $file ) ) {
+				$j = json_decode( (string) file_get_contents( $file ), true );
+				if ( is_array( $j ) && isset( $j['map'] ) && is_array( $j['map'] ) ) {
+					$shipped = $j['map'];
+				}
+			}
+		}
+		$map = $shipped;
+		if ( function_exists( 'get_option' ) ) {
+			foreach ( (array) get_option( self::MAP, array() ) as $n => $refs ) {
+				$map[ $n ] = array_values( array_unique( array_merge( isset( $map[ $n ] ) ? $map[ $n ] : array(), (array) $refs ) ) );
+			}
+		}
+		return $map;
+	}
+
+	/**
 	 * Is the typed citation explained by the footnotes of the Catechism paragraph the words matched (or the reverse)?
 	 *
 	 * @return string 'exact', 'document' or ''
@@ -255,7 +280,7 @@ class AF_Xref {
 	 */
 	public static function explain( $status = 'conflict' ) {
 		global $wpdb;
-		$map = get_option( self::MAP, array() );
+		$map = self::map();
 		$t   = AF_Graph::table();
 		$ids = $wpdb->get_col( $wpdb->prepare( "SELECT DISTINCT CONCAT(post_id,'|',quote_ord,'|',quote_hash) FROM {$t} WHERE status = %s AND ( confirmed IS NULL OR confirmed = 1 )", $status ) ); // phpcs:ignore WordPress.DB
 		$counts = array( 'exact' => 0, 'document' => 0, 'none' => 0, 'other' => 0 );

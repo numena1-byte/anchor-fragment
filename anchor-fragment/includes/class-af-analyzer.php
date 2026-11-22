@@ -9,6 +9,8 @@
  *   low          strong text match, nothing else points at that document
  *   ambiguous    strong match in more than one document and nothing breaks the tie
  *   conflict     the author typed one paragraph but the text matches another
+ *   cross_reference the author typed one paragraph and the text matches another that the Catechism footnotes link
+ *                (the Catechism quotes the very source the post cites): counts as correct
  *   partial      some of the quotation matches (edited, or only part is from the document)
  *   out_of_scope no match, and the context points at a document we do not have
  *   no_match     nothing found
@@ -38,6 +40,25 @@ class AF_Analyzer {
 
 	/** id => [ title, short, aliases[], slug ] */
 	private $docs = array();
+
+	/** Catechism paragraph => [ "doc:locator", ... ] its footnotes cite. */
+	private $xref = array();
+
+	/** Give the analyzer the Catechism footnote map, so a Catechism paragraph and the source it quotes count as one. */
+	public function set_xref( array $map ) {
+		$this->xref = $map;
+	}
+
+	/** Does the Catechism paragraph's footnotes cite that very paragraph of the document, or the reverse? */
+	private function cross_ref( $a_doc, $a_loc, $b_doc, $b_loc ) {
+		if ( 'catechism' === $a_doc && 'catechism' !== $b_doc ) {
+			return isset( $this->xref[ (int) $a_loc ] ) && in_array( $b_doc . ':' . (int) $b_loc, $this->xref[ (int) $a_loc ], true );
+		}
+		if ( 'catechism' === $b_doc && 'catechism' !== $a_doc ) {
+			return isset( $this->xref[ (int) $b_loc ] ) && in_array( $a_doc . ':' . (int) $a_loc, $this->xref[ (int) $b_loc ], true );
+		}
+		return false;
+	}
 
 	/** @param array $registry id => entry from registry.json */
 	public function __construct( array $registry ) {
@@ -393,6 +414,27 @@ class AF_Analyzer {
 							$bits[] = ( $t['doc'] ? $t['doc'] : '?' ) . ' ' . implode( ',', $t['loc'] );
 						}
 						$note = 'typed ' . implode( '; ', $bits ) . ', text matches ' . $best['doc'] . ' ' . implode( ',', $best['locators'] );
+						// The Catechism quotes the very paragraph the post cites (or the reverse): both are right.
+						if ( $this->xref ) {
+							$all = true;
+							foreach ( $typed_here as $t ) {
+								$ok = ( null === $t['doc'] || $t['doc'] === $best['doc'] ) && array_intersect( $t['loc'], $best['locators'] );
+								if ( ! $ok && null !== $t['doc'] ) {
+									foreach ( $t['loc'] as $tl ) {
+										foreach ( $best['locators'] as $bl ) {
+											if ( $this->cross_ref( $t['doc'], $tl, $best['doc'], $bl ) ) {
+												$ok = true;
+											}
+										}
+									}
+								}
+								$all = $all && $ok;
+							}
+							if ( $all ) {
+								$status = 'cross_reference';
+								$note   = 'cross-reference: ' . implode( '; ', $bits ) . ' and ' . $best['doc'] . ' ' . implode( ',', $best['locators'] ) . ' are linked by the Catechism footnotes (the Catechism quotes the same source)';
+							}
+						}
 						foreach ( $typed_here as $t ) {
 							if ( $t['doc'] === $best['doc'] && 1 === count( $t['loc'] ) && 1 === count( $best['locators'] ) && 1 === levenshtein( (string) $t['loc'][0], (string) $best['locators'][0] ) ) {
 								$note .= ' (a likely typing slip)';

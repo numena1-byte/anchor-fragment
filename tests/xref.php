@@ -55,5 +55,12 @@ check( 'exact: CCC 748 cites LG 1', 'exact' === AF_Xref::explains( $map, 748, 'l
 check( 'document: CCC 748 cites LG, not paragraph 9', 'document' === AF_Xref::explains( $map, 748, 'lumen-gentium', 9 ) );
 check( 'none: CCC 748 cites nothing of Dei Verbum', '' === AF_Xref::explains( $map, 748, 'dei-verbum', 1 ) );
 check( 'none: a paragraph with no footnotes', '' === AF_Xref::explains( $map, 750, 'lumen-gentium', 1 ) );
+// The map shipped with the plugin.
+$shipped = AF_Xref::map();
+check( 'the shipped map is loaded', count( $shipped ) > 400, count( $shipped ) );
+check( 'the shipped map has CCC 112 -> Dei Verbum 12 (a note on the lead-in line before the paragraph)', in_array( 'dei-verbum:12', $shipped[112] ?? array(), true ) );
+check( 'the shipped map has CCC 748 -> Lumen Gentium 1 and CCC 1324 -> Lumen Gentium 11', in_array( 'lumen-gentium:1', $shipped[748] ?? array(), true ) && in_array( 'lumen-gentium:11', $shipped[1324] ?? array(), true ) );
+check( 'the shipped map holds only references (no text) and no Catechism-to-Catechism entries', ! array_filter( $shipped, function ( $refs ) { foreach ( $refs as $r ) { if ( ! preg_match( '/^[a-z-]+:\d+$/', $r ) || 0 === strpos( $r, 'catechism:' ) ) { return true; } } return false; } ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

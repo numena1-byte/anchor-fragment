@@ -129,6 +129,12 @@ AF_Graph::set_confirmed( $matched, null );
 check( 'clear removes the decision', null === $wpdb->get_var( "SELECT confirmed FROM wp_af_citations WHERE id = $matched" ) );
 check( 'status names', array( 'conflict', 'ambiguous' ) === AF_Graph::status_set( 'review' ) && array( 'all' ) === AF_Graph::status_set( 'all' ) );
 
+// A cross-reference (the Catechism quotes the source the post cites): both edges are recorded, as cross_reference, and count as confident.
+$resX = array( 'quotes' => array( array( 'i' => 1, 'status' => 'cross_reference', 'words' => 30, 'hash' => 'hxref', 'best' => $b( 'catechism', array( 112 ), 1.0 ), 'alt' => array(), 'typed' => array( array( 'doc' => 'dei-verbum', 'loc' => array( 12 ) ) ) ) ) );
+$rx = AF_Graph::rows_from_result( $resX );
+check( 'cross_reference records the matched and the typed paragraph', 2 === count( $rx ) && null !== $by( $rx, 'catechism', 112 ) && null !== $by( $rx, 'dei-verbum', 12 ) && 'cross_reference' === $by( $rx, 'dei-verbum', 12 )['status'] && 'cross_reference' === $by( $rx, 'catechism', 112 )['status'], json_encode( $rx ) );
+check( 'cross_reference is in the default view and not in the review list', in_array( 'cross_reference', AF_Graph::status_set( '' ), true ) && ! in_array( 'cross_reference', AF_Graph::status_set( 'review' ), true ) && in_array( 'cross_reference', AF_Graph::CONFIDENT, true ) );
+
 // An ambiguous quotation between two documents records both candidates; a weak alternative is left out.
 $resA = array( 'quotes' => array( array( 'i' => 1, 'status' => 'ambiguous', 'words' => 19, 'hash' => 'hamb', 'best' => $b( 'evangelii-gaudium', array( 48 ), 1.0 ), 'alt' => array( array( 'doc' => 'dilexi-te', 'locators' => array( 36 ), 'coverage' => 1.0 ), array( 'doc' => 'laudato-si', 'locators' => array( 9 ), 'coverage' => 0.3 ) ), 'typed' => array() ) ) );
 $ra = AF_Graph::rows_from_result( $resA );

@@ -8,7 +8,7 @@
  *   post_id            -> post (the post's URL, later a strong reference)
  *   doc, locator       -> anchor.document, anchor.locator
  *   basis              -> basis   ("typed": the author cited it and the text agrees; "text-match": found by the words alone)
- *   status             -> how sure the matcher is: high, medium, low, ambiguous, conflict, partial, unchecked
+ *   status             -> how sure the matcher is: high, medium, low, ambiguous, conflict, partial, cross_reference, unchecked
  *   quote_hash         -> commentary.contentHash (a fingerprint of the quotation; no text is kept)
  *   matched_at         -> matchedAt
  *   confirmed          -> confirmed (NULL not reviewed, 1 yes, 0 no); kept when a post is matched again
@@ -25,7 +25,7 @@ class AF_Graph {
 	const DB_VERSION = '1';
 	const META_KEY   = '_af_matched';
 	/** Statuses that count as "the post cites this paragraph" unless a report asks for more or less. */
-	const CONFIDENT = array( 'high', 'medium' );
+	const CONFIDENT = array( 'high', 'medium', 'cross_reference' );
 	/** An alternative counts as a candidate when it covers the quotation within this much of the best match. */
 	const TIE = 0.05;
 
@@ -114,7 +114,7 @@ class AF_Graph {
 		};
 		foreach ( (array) ( $res['quotes'] ?? array() ) as $q ) {
 			$status = $q['status'];
-			if ( ! empty( $q['best'] ) && in_array( $status, array( 'high', 'medium', 'low', 'ambiguous', 'conflict', 'partial' ), true ) ) {
+			if ( ! empty( $q['best'] ) && in_array( $status, array( 'high', 'medium', 'low', 'ambiguous', 'conflict', 'partial', 'cross_reference' ), true ) ) {
 				foreach ( $q['best']['locators'] as $loc ) {
 					$add( $q, $q['best']['doc'], $loc, 'high' === $status ? 'typed' : 'text-match', $status, round( (float) $q['best']['coverage'], 3 ) );
 				}
@@ -139,7 +139,7 @@ class AF_Graph {
 					if ( 'high' === $status && ! ( ! empty( $q['best'] ) && $t['doc'] === $q['best']['doc'] && in_array( $loc, $q['best']['locators'], true ) ) ) {
 						continue;
 					}
-					$add( $q, $t['doc'], $loc, 'typed', 'conflict' === $status ? 'conflict' : ( 'high' === $status ? 'high' : 'unchecked' ), null );
+					$add( $q, $t['doc'], $loc, 'typed', 'conflict' === $status ? 'conflict' : ( in_array( $status, array( 'high', 'cross_reference' ), true ) ? $status : 'unchecked' ), null );
 				}
 			}
 		}
@@ -371,9 +371,10 @@ class AF_Graph {
 	/** Statuses a reviewer picks from the filter, by name. */
 	public static function status_set( $name ) {
 		$sets = array(
-			''          => array( 'high', 'medium' ),
-			'high'      => array( 'high' ),
-			'weaker'    => array( 'high', 'medium', 'low', 'partial' ),
+			''          => array( 'high', 'medium', 'cross_reference' ),
+			'high'      => array( 'high', 'cross_reference' ),
+			'weaker'    => array( 'high', 'medium', 'cross_reference', 'low', 'partial' ),
+			'cross_reference' => array( 'cross_reference' ),
 			'review'    => array( 'conflict', 'ambiguous' ),
 			'conflict'  => array( 'conflict' ),
 			'ambiguous' => array( 'ambiguous' ),

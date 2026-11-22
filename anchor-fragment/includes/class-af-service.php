@@ -282,6 +282,7 @@ class AF_Service {
 		}
 
 		$analyzer = new AF_Analyzer( self::registry() );
+		$analyzer->set_xref( AF_Xref::map() );
 		$res      = $analyzer->analyze(
 			wpautop( $post->post_content ),
 			$tags,

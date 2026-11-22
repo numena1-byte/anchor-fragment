@@ -590,7 +590,7 @@ class AF_Rest {
 				<?php endforeach; ?>
 				</select>
 				Paragraph <input type="text" name="locator" size="6">
-				Confidence <select name="status"><option value="">high + medium</option><option value="high">high only</option><option value="weaker">+ low, partial</option><option value="review">conflict + ambiguous</option><option value="conflict">conflict only</option><option value="ambiguous">ambiguous only</option><option value="unchecked">typed, not checked</option><option value="all">everything</option></select>
+				Confidence <select name="status"><option value="">high + medium</option><option value="high">high only</option><option value="weaker">+ low, partial</option><option value="review">conflict + ambiguous</option><option value="conflict">conflict only</option><option value="ambiguous">ambiguous only</option><option value="cross_reference">cross-references (the Catechism quotes the source)</option><option value="unchecked">typed, not checked</option><option value="all">everything</option></select>
 				<button class="button" type="submit">Show</button>
 			</form>
 			<div id="af-graph-out" style="margin-top:1em;max-width:70em"></div>

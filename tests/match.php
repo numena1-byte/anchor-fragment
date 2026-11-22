@@ -185,6 +185,21 @@ check( '14b Catechism indexed -> high, paragraph 2415, typed cite agrees', 'high
 $yr  = $an2->analyze( '<p>The Catechism (1992) says:</p><blockquote>' . $qtext . '</blockquote>', array(), function ( $id ) use ( $get, $icc ) { return 'catechism' === $id ? $icc : $get( $id ); } );
 check( '14c a year next to the title is not a cite', empty( $yr['quotes'][0]['typed'] ) || 1992 !== $yr['quotes'][0]['typed'][0]['loc'][0], json_encode( $yr['quotes'][0]['typed'] ) );
 
+// 14d. The Catechism quotes the source the post cites: both are right (cross_reference), only for the exact paragraph.
+$ccget = function ( $id ) use ( $get, $icc ) { return 'catechism' === $id ? $icc : $get( $id ); };
+$h14   = '<p>As Test Document 4 says:</p><blockquote>' . $qtext . '</blockquote>';
+$r0 = $an2->analyze( $h14, array(), $ccget );
+check( '14d without the footnote map, a quotation typed as TD 4 that matches CCC 2415 is a conflict', 'conflict' === $r0['quotes'][0]['status'], json_encode( $r0['quotes'][0] ) );
+$an2->set_xref( array( 2415 => array( 'test-document:4' ) ) );
+$r1 = $an2->analyze( $h14, array(), $ccget );
+check( '14e CCC 2415 cites TD 4 -> cross_reference, not a conflict', 'cross_reference' === $r1['quotes'][0]['status'] && false !== strpos( $r1['quotes'][0]['note'], 'cross-reference' ), json_encode( $r1['quotes'][0] ) );
+$an2->set_xref( array( 2415 => array( 'test-document:6' ) ) );
+$r2 = $an2->analyze( $h14, array(), $ccget );
+check( '14f CCC 2415 cites the document at another paragraph -> still a conflict', 'conflict' === $r2['quotes'][0]['status'], json_encode( $r2['quotes'][0] ) );
+$an2->set_xref( array( 2415 => array( 'test-document:4' ) ) );
+$r3 = $an2->analyze( '<p>As the Catechism 2415 says:</p><blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.</blockquote>', array(), $ccget );
+check( '14g the reverse: the words match TD 4, the author typed CCC 2415 which cites TD 4 -> cross_reference', 'cross_reference' === $r3['quotes'][0]['status'], json_encode( $r3['quotes'][0] ) );
+
 // 15. "#N" beside the quotation, the document named around the previous quotation (a Catechism-style post).
 $p15 = '<blockquote>Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body. The people who bake together also remember together.</blockquote>'
 	. '<p>This is followed by the reference to article 3 of the Test Document.</p>'
