@@ -230,6 +230,10 @@ class AF_Analyzer {
 				$guess = false;
 				if ( null === $doc ) {
 					$doc = $lead_doc;
+					// A link beside the quotation that goes to one document says which: "(<a href=...gaudium-et-spes...>Paragraph 69</a>)".
+					if ( null === $doc && 1 === count( $hint_link ) ) {
+						$doc = $hint_link[0];
+					}
 					if ( null === $doc && null !== $carry ) {
 						$doc   = $carry;
 						$guess = true; // Only the document cited last: counts when the words agree.
@@ -656,6 +660,23 @@ class AF_Analyzer {
 			return $out;
 		};
 
+		// The links of a paragraph that stand after a quotation and before the next one belong to that quotation; when there
+		// are none, the paragraph's links all count.
+		$near_links = function ( $p, $text, $end, $limit ) use ( $xp, $hrefs ) {
+			$own = array();
+			foreach ( $xp->query( './/a[@href]', $p ) as $a ) {
+				$t = self::clean( $a->textContent );
+				if ( '' === $t ) {
+					continue;
+				}
+				$pos = strpos( $text, $t, $end );
+				if ( false !== $pos && $pos < $limit && $pos - $end < 250 ) {
+					$own[] = $a->getAttribute( 'href' );
+				}
+			}
+			return $own ? $own : $hrefs( $p );
+		};
+
 		$out = array();
 
 		foreach ( $xp->query( '//blockquote' ) as $bq ) {
@@ -715,7 +736,7 @@ class AF_Analyzer {
 			if ( ! preg_match_all( '/[\x{201C}"\x{00AB}]([^\x{201D}"\x{00BB}]{40,700})[\x{201D}"\x{00BB}]/u', $text, $ms, PREG_SET_ORDER | PREG_OFFSET_CAPTURE ) ) {
 				continue;
 			}
-			foreach ( $ms as $m ) {
+			foreach ( $ms as $i => $m ) {
 				$quote = $m[1][0];
 				if ( count( AF_Matcher::tokens( $quote ) ) < AF_Matcher::MIN_TOKENS ) {
 					continue;
@@ -728,7 +749,7 @@ class AF_Analyzer {
 					'cite'  => '',
 					'lead'  => mb_substr( substr( $text, 0, $start ), -300 ),
 					'after' => mb_substr( substr( $text, $end ), 0, 200 ),
-					'hrefs' => $hrefs( $p ),
+					'hrefs' => $near_links( $p, $text, $end, isset( $ms[ $i + 1 ] ) ? $ms[ $i + 1 ][0][1] : strlen( $text ) ),
 				);
 			}
 		}

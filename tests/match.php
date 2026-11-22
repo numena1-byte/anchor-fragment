@@ -279,6 +279,11 @@ $q = run1( $an, $get, '<p>First, “Clay remembers the pressure of the hand that
 $second = null; foreach ( $q as $x ) { if ( 0 === strpos( $x['excerpt'], 'The harbour' ) ) { $second = $x; } }
 check( '9ag a carried document is only a guess: no conflict', $second && 'conflict' !== $second['status'], json_encode( $q ) );
 
+// 9ah. "(<a href=...another-charter...>Paragraph 3</a>)" after a quotation cited from another document: the link says which.
+$q = run1( $an, $get, '<p>The council says, “' . $riv . '” (<a href="https://www.vatican.va/test/doc-a_test-document.html">Paragraph 5</a>). Likewise, the fathers stated, “' . $acx . '” (<a href="https://www.vatican.va/test/doc-b_another-charter.html">Paragraph 3</a>).</p>' );
+$second = end( $q );
+check( '9ah a link beside the cite names its document -> high, no conflict', 'high' === $second['status'] && 'another-charter' === $second['typed'][0]['doc'], json_encode( $q ) );
+
 // 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
 $bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
 $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );
