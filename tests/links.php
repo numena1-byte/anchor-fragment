@@ -39,5 +39,8 @@ check( '7 non-ASCII text survives', 1 === $r['linked'] && false !== strpos( html
 $r = AF_Cite_Links::decorate( '<p>No brackets at all.</p>', $edges, $an, $linker );
 check( '8 no brackets: returned as it came', 0 === $r['linked'] && '<p>No brackets at all.</p>' === $r['html'] );
 
+$r = AF_Cite_Links::decorate( '<p>Said (cf. EG, 30) and (see AL 222).</p>', $edges, $an, $linker );
+check( '9 "cf." and "see" stay outside the link', 2 === $r['linked'] && false !== strpos( $r['html'], '(cf. <a href="https://src.example/evangelii-gaudium#:~:text=p30" class="af-cite" rel="noopener">EG, 30</a>)' ) && false !== strpos( $r['html'], '(see <a href="https://src.example/amoris-laetitia#:~:text=p222" class="af-cite" rel="noopener">AL 222</a>)' ), $r['html'] );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

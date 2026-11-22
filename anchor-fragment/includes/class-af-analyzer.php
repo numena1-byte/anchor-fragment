@@ -809,13 +809,15 @@ class AF_Analyzer {
 
 		foreach ( $xp->query( '//p[not(ancestor::blockquote)]' ) as $p ) {
 			$text = self::clean( $p->textContent );
-			if ( ! preg_match_all( '/[\x{201C}"\x{00AB}]([^\x{201D}"\x{00BB}]{40,700})[\x{201D}"\x{00BB}]/u', $text, $ms, PREG_SET_ORDER | PREG_OFFSET_CAPTURE ) ) {
+			if ( ! preg_match_all( '/[\x{201C}"\x{00AB}]([^\x{201D}"\x{00BB}]{8,700})[\x{201D}"\x{00BB}]/u', $text, $ms, PREG_SET_ORDER | PREG_OFFSET_CAPTURE ) ) {
 				continue;
 			}
 			$at = $links_at( $p, $text );
 			foreach ( $ms as $i => $m ) {
 				$quote = $m[1][0];
-				if ( count( AF_Matcher::tokens( $quote ) ) < AF_Matcher::MIN_TOKENS ) {
+				// A short quotation ("in the name of the Church.") is not matched, but it still marks where the one before it
+				// stops, so its cite is not read as that one's.
+				if ( mb_strlen( $quote ) < 40 || count( AF_Matcher::tokens( $quote ) ) < AF_Matcher::MIN_TOKENS ) {
 					continue;
 				}
 				$start = $m[0][1];

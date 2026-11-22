@@ -118,6 +118,11 @@ class AF_Cite_Links {
 					continue;
 				}
 				$start = $m[1][1];
+				// "cf. LS, 119": the link is the citation, not the "cf." before it.
+				if ( preg_match( '/^\s*(?:cf\.?|see(?:\s+also)?|compare)\s+/iu', $inner, $pm ) ) {
+					$start += strlen( $pm[0] );
+					$inner  = substr( $inner, strlen( $pm[0] ) );
+				}
 				$parts[] = array( $pos, $start, null );
 				$parts[] = array( $start, $start + strlen( $inner ), $url );
 				$pos     = $start + strlen( $inner );

@@ -325,6 +325,10 @@ $third = end( $q );
 check( '9am the third, unattributed quotation takes no cite from the two before it', 3 === count( $q ) && empty( $third['typed'] ) && 'conflict' !== $third['status'], json_encode( $q ) );
 check( '9am2 the first two keep their own cites and are confirmed', 'high' === $q[0]['status'] && 'high' === $q[1]['status'], json_encode( array_column( $q, 'status' ) ) );
 
+// 9an. A short quotation that is not matched still ends the one before it: its cite is not that one's.
+$q = run1( $an, $get, '<p>Another Charter wrote “' . $acx . '” and then asked “in the name of the Church.” (TD 2).</p>' );
+check( '9an a short quotation after a long one takes the cite after it, not the long one', 1 === count( $q ) && empty( $q[0]['typed'] ) && 'conflict' !== $q[0]['status'], json_encode( $q ) );
+
 // 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
 $bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
 $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );
