@@ -339,6 +339,14 @@ check( '9ao4 the shared cite agrees with the first quotation -> high for it', 'h
 $q = run1( $an, $get, '<p>He wrote “' . $riv . '”. Then he added “' . $acx . '” (AC 3).</p>' );
 check( '9ao5 a sentence break between them: the cite is not shared', empty( $q[0]['typed'] ), json_encode( $q[0] ) );
 
+// 9ap. A number that counts something ("Fratelli Tutti 41 times") is not a paragraph locator.
+foreach ( array( 'The word appears in Test Document 4 times in all.' => '4 times', 'It appears in Test Document 4 percent of the time' => '4 percent', 'About TD 4% of it' => '4%', 'Test Document 4 pages long' => '4 pages' ) as $sent => $why ) {
+	$q = run1( $an, $get, '<p>' . $sent . '. For example, it says “' . $bq3 . '”</p>' );
+	check( '9ap "' . $why . '" is a count, not a cite', empty( $q[0]['typed'] ) && 'conflict' !== $q[0]['status'], json_encode( $q[0] ) );
+}
+$q = run1( $an, $get, '<p>As Test Document 4 says, “' . $bq3 . '”</p>' );
+check( '9ap2 a real cite "Test Document 4 says" still counts', 'high' === $q[0]['status'], json_encode( $q[0] ) );
+
 // 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
 $bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
 $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );

@@ -578,7 +578,7 @@ class AF_Analyzer {
 		$text  = self::strip_dates( $text );
 		$lite  = self::lite( $text );
 		$plain = self::straight( $text );
-		$num   = '(?:\s*[,.:]?\s*(?:nn?\.|nos?\.|no|n|\x{00A7}+|#|paras?\.?|paragraphs?)?\s*)(\d{1,4})(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,4})(?!\d))?((?:\s*[;,]\s*(?:nn?\.|nos?\.|\x{00A7}+)?\s*\d{1,4}(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*\d{1,4}(?!\d))?)*)';
+		$num   = '(?:\s*[,.:]?\s*(?:nn?\.|nos?\.|no|n|\x{00A7}+|#|paras?\.?|paragraphs?)?\s*)(\d{1,4})(?!\d)(?!\s*(?:%|(?:times?|percent|per\s?cent|years?|pages?|words?|days?|months?|weeks?|paragraphs?|articles?|footnotes?|references?|occurrences?|instances?|mentions?|uses|people|million|billion|thousand|hundred)\b))(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,4})(?!\d))?((?:\s*[;,]\s*(?:nn?\.|nos?\.|\x{00A7}+)?\s*\d{1,4}(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*\d{1,4}(?!\d))?)*)';
 		$out   = array();
 		$docs  = $this->docs;
 		$add1  = function ( $doc, $a, $b ) use ( &$out, $docs ) {
