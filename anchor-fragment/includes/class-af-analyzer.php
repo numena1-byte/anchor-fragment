@@ -142,7 +142,7 @@ class AF_Analyzer {
 			}
 
 			// The same when the cite follows the closing quotation mark: "...evolutionary one” (GS 5). The Catechism says ...".
-			if ( ! $has_own && preg_match( '/^[\s\x{201D}\x{2019}"\']*[(\[]((?:[^()\[\]]|\([^()]*\)){1,160})[)\]]/us', $q['after'], $am ) && ( $this->cites( $am[1] ) || $this->marked_cites( $am[1] ) || $this->bare_cites( '(' . $am[1] . ')' ) ) ) {
+			if ( ! $has_own && preg_match( '/^[\s\x{201D}\x{2019}"\']*[(\[]((?:[^()\[\]]|\([^()]*\)|\[[A-Za-z]{1,8}\]){1,160})[)\]]/us', $q['after'], $am ) && ( $this->cites( $am[1] ) || $this->marked_cites( $am[1] ) || $this->bare_cites( '(' . $am[1] . ')' ) ) ) {
 				$q['cite'] = trim( $q['cite'] . ' (' . $am[1] . ')' );
 				$has_own   = true;
 			}
@@ -156,7 +156,7 @@ class AF_Analyzer {
 			// A cite right after the closing mark of an earlier long quotation in the text before this one, "...in his depths”
 			// (CCC 1776) — that can help us", is that quotation's own, not this one's.
 			$q['lead'] = preg_replace_callback(
-				'/([\x{201D}"])(\s*[(\[](?:[^()\[\]]|\([^()]*\)){1,160}[)\]])/us',
+				'/([\x{201D}"])(\s*[(\[](?:[^()\[\]]|\([^()]*\)|\[[A-Za-z]{1,8}\]){1,160}[)\]])/us',
 				function ( $m ) use ( $q ) {
 					$pos    = mb_strpos( $q['lead'], $m[0] );
 					$before = false === $pos ? '' : mb_substr( $q['lead'], max( 0, $pos - 40 ), min( 40, $pos ) );
@@ -576,6 +576,8 @@ class AF_Analyzer {
 
 	private function cites( $text ) {
 		$text  = self::strip_dates( $text );
+		// "Dei Verbum [DV] 7": a bracketed abbreviation between the name and the number is part of the cite.
+		$text  = preg_replace( '/\s*\[([A-Za-z]{1,8})\]\s*(?=\d)/u', ' $1 ', $text );
 		$lite  = self::lite( $text );
 		$plain = self::straight( $text );
 		$num   = '(?:\s*[,.:]?\s*(?:nn?\.|nos?\.|no|n|\x{00A7}+|#|paras?\.?|paragraphs?)?\s*)(\d{1,4})(?!\d)(?!\s*(?:%|(?:times?|percent|per\s?cent|years?|pages?|words?|days?|months?|weeks?|paragraphs?|articles?|footnotes?|references?|occurrences?|instances?|mentions?|uses|people|million|billion|thousand|hundred)\b))(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,4})(?!\d))?((?:\s*[;,]\s*(?:nn?\.|nos?\.|\x{00A7}+)?\s*\d{1,4}(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*\d{1,4}(?!\d))?)*)';
@@ -623,7 +625,7 @@ class AF_Analyzer {
 	 * @return array [ words, cite ]
 	 */
 	private function split_trailing_cite( $p ) {
-		if ( ! preg_match( '/^(.*?)[\s\x{201D}\x{2019}"\']*[(\[]((?:[^()\[\]]|\([^()]*\)){1,160})[)\]]\s*[.,;:]?\s*$/us', $p, $m ) || '' === trim( $m[1] ) ) {
+		if ( ! preg_match( '/^(.*?)[\s\x{201D}\x{2019}"\']*[(\[]((?:[^()\[\]]|\([^()]*\)|\[[A-Za-z]{1,8}\]){1,160})[)\]]\s*[.,;:]?\s*$/us', $p, $m ) || '' === trim( $m[1] ) ) {
 			return array( $p, '' );
 		}
 		$cap = $m[2];
@@ -733,7 +735,7 @@ class AF_Analyzer {
 		// are none, the paragraph's links all count.
 		// Where the cite that follows a quotation ends: "(MH 192)" right after the closing mark belongs to that quotation.
 		$cite_end = function ( $text, $pos ) {
-			if ( preg_match( '/\G[\s\x{201D}\x{2019}"\']*[(\[]((?:[^()\[\]]|\([^()]*\)){1,160})[)\]]/u', $text, $m, 0, $pos ) && preg_match( '/\d/', $m[1] ) ) {
+			if ( preg_match( '/\G[\s\x{201D}\x{2019}"\']*[(\[]((?:[^()\[\]]|\([^()]*\)|\[[A-Za-z]{1,8}\]){1,160})[)\]]/u', $text, $m, 0, $pos ) && preg_match( '/\d/', $m[1] ) ) {
 				return $pos + strlen( $m[0] );
 			}
 			return $pos;
