@@ -284,6 +284,16 @@ $q = run1( $an, $get, '<p>The council says, “' . $riv . '” (<a href="https:/
 $second = end( $q );
 check( '9ah a link beside the cite names its document -> high, no conflict', 'high' === $second['status'] && 'another-charter' === $second['typed'][0]['doc'], json_encode( $q ) );
 
+// 9ai. A quotation that holds cites of its own ("(Another Charter, 2)"): the last one is quoted too, not the author's.
+$q = run1( $an, $get, '<p>The council says:</p><blockquote><p>' . $riv . ' (Another Charter, 2) and so on, as quoted (Another Charter, 6)</p></blockquote>' );
+check( '9ai a trailing cite inside a quotation that holds others is not an own cite -> no conflict', 'conflict' !== $q[0]['status'] && empty( $q[0]['typed'] ), json_encode( $q ) );
+
+// 9aj. "(cf. AC 3)" at the end of a quotation is a cross-reference of the source: dropped when the words say otherwise.
+$q = run1( $an, $get, '<p>The council says:</p><blockquote><p>' . $riv . ' (cf. AC 3).</p></blockquote>' );
+check( '9aj a trailing "(cf. ...)" that the words do not support -> no conflict', 'conflict' !== $q[0]['status'] && empty( $q[0]['typed'] ), json_encode( $q ) );
+$q = run1( $an, $get, '<p>The council says:</p><blockquote><p>' . $riv . '</p></blockquote><p>(cf. TD 2)</p>' );
+check( '9aj2 a "(cf. TD 2)" beside the quotation that the words support still counts', 'high' === $q[0]['status'], json_encode( $q ) );
+
 // 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
 $bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
 $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );

@@ -192,6 +192,12 @@ class AF_Analyzer {
 			if ( ! empty( $q['declared'] ) && isset( $this->docs[ $q['declared']['doc'] ] ) ) {
 				$typed[] = array( 'doc' => $q['declared']['doc'], 'loc' => $q['declared']['loc'] );
 			}
+			// "(cf. CCC 1955)" is a cross-reference, usually the source's own: it counts only when the words agree.
+			if ( $has_own && preg_match( '/^[\s(\[]*cf\.?\s/iu', $q['cite'] ) ) {
+				foreach ( $typed as $k => $t ) {
+					$typed[ $k ]['soft'] = true;
+				}
+			}
 			foreach ( $this->bare_cites( $has_own ? $q['cite'] : $q['cite'] . ' ' . $q['after'] ) as $loc ) {
 				$doc = null !== $lead_doc ? $lead_doc : $carry;
 				if ( null === $doc && 1 === count( $hints ) ) {
@@ -713,7 +719,10 @@ class AF_Analyzer {
 			}
 			// A citation in parentheses at the very end belongs to the cite, not the quotation.
 			$last = count( $paras ) - 1;
-			if ( preg_match( '/\(([^()]{1,100})\)\s*$/u', $paras[ $last ], $m ) && preg_match( '/\d/', $m[1] ) ) {
+			// Not when the quotation already holds such cites of its own ("(Gaudium et Spes, 16)"): the last one is the author's
+			// quoted source too, as in Amoris Laetitia 222.
+			$holds = preg_match( '/[(\[](?:cf\.\s*)?\p{Lu}[\p{L}\s.\'\x{2019}]+,\s*(?:no\.\s*|n\.\s*|#)?\d{1,4}[)\]].*?[(\[]/us', $paras[ $last ] );
+			if ( ! $holds && preg_match( '/\(([^()]{1,100})\)\s*$/u', $paras[ $last ], $m ) && preg_match( '/\d/', $m[1] ) ) {
 				$cite            .= ' (' . $m[1] . ')';
 				$paras[ $last ]   = trim( substr( $paras[ $last ], 0, -strlen( $m[0] ) ) );
 			}
