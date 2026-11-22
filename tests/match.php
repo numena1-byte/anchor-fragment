@@ -329,6 +329,16 @@ check( '9am2 the first two keep their own cites and are confirmed', 'high' === $
 $q = run1( $an, $get, '<p>Another Charter wrote “' . $acx . '” and then asked “in the name of the Church.” (TD 2).</p>' );
 check( '9an a short quotation after a long one takes the cite after it, not the long one', 1 === count( $q ) && empty( $q[0]['typed'] ) && 'conflict' !== $q[0]['status'], json_encode( $q ) );
 
+// 9ao. One cite for two quotations in a sentence: it counts for the first one only when its words agree.
+$q = run1( $an, $get, '<p>He wrote “' . $riv . '” and then added “' . $acx . '” (AC 3).</p>' );
+check( '9ao the first quotation shares the cite after the second: kept when the words agree', 2 === count( $q ), json_encode( $q ) );
+check( '9ao2 the second quotation is confirmed by its own cite', 'high' === $q[1]['status'], json_encode( $q[1] ) );
+check( '9ao3 the first (TD 2, words do not match AC 3) is not made a conflict by the shared cite', 'conflict' !== $q[0]['status'] && empty( $q[0]['typed'] ), json_encode( $q[0] ) );
+$q = run1( $an, $get, '<p>He wrote “' . $acx . '” and then added “' . $riv . '” (AC 3).</p>' );
+check( '9ao4 the shared cite agrees with the first quotation -> high for it', 'high' === $q[0]['status'] && 'another-charter' === $q[0]['typed'][0]['doc'], json_encode( $q ) );
+$q = run1( $an, $get, '<p>He wrote “' . $riv . '”. Then he added “' . $acx . '” (AC 3).</p>' );
+check( '9ao5 a sentence break between them: the cite is not shared', empty( $q[0]['typed'] ), json_encode( $q[0] ) );
+
 // 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
 $bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
 $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );

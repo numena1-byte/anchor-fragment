@@ -209,6 +209,14 @@ class AF_Analyzer {
 
 			// Citations the author typed.
 			$typed = $this->cites( $has_own ? $q['cite'] : $ctx );
+			// The cite after the next quotation in the same sentence may be meant for this one too: it counts only when the
+			// words agree.
+			if ( ! $has_own && ! empty( $q['shared'] ) ) {
+				foreach ( $this->cites( $q['shared'] ) as $sc ) {
+					$sc['soft'] = true;
+					$typed[]    = $sc;
+				}
+			}
 			// A quotation inserted by the plugin says which paragraph it is meant to be.
 			if ( ! empty( $q['declared'] ) && isset( $this->docs[ $q['declared']['doc'] ] ) ) {
 				$typed[] = array( 'doc' => $q['declared']['doc'], 'loc' => $q['declared']['loc'] );
@@ -835,13 +843,25 @@ class AF_Analyzer {
 						$own[] = $l[1];
 					}
 				}
+				// One cite for a pair: "...“A,” and be characterized by “B” (EG 170)". When this quotation has no cite right
+				// after it and the next one is in the same sentence and has one, that cite may be meant for both.
+				$shared = '';
+				if ( isset( $ms[ $i + 1 ] ) && $cite_end( $text, $end ) === $end ) {
+					$gap   = substr( $text, $end, max( 0, $to - $end ) );
+					$ne    = $ms[ $i + 1 ][0][1] + strlen( $ms[ $i + 1 ][0][0] );
+					$nce   = $cite_end( $text, $ne );
+					if ( $nce > $ne && ! preg_match( '/[.!?;:]\s/u', $gap . ' ' ) ) {
+						$shared = trim( substr( $text, $ne, $nce - $ne ) );
+					}
+				}
 				$out[] = array(
-					'kind'  => 'inline',
-					'paras' => array( $quote ),
-					'cite'  => '',
-					'lead'  => mb_substr( substr( $text, $from, max( 0, $start - $from ) ), -300 ),
-					'after' => mb_substr( substr( $text, $end, max( 0, $to - $end ) ), 0, 200 ),
-					'hrefs' => $own,
+					'kind'   => 'inline',
+					'paras'  => array( $quote ),
+					'cite'   => '',
+					'lead'   => mb_substr( substr( $text, $from, max( 0, $start - $from ) ), -300 ),
+					'after'  => mb_substr( substr( $text, $end, max( 0, $to - $end ) ), 0, 200 ),
+					'hrefs'  => $own,
+					'shared' => $shared,
 				);
 			}
 		}
