@@ -294,6 +294,15 @@ check( '9aj a trailing "(cf. ...)" that the words do not support -> no conflict'
 $q = run1( $an, $get, '<p>The council says:</p><blockquote><p>' . $riv . '</p></blockquote><p>(cf. TD 2)</p>' );
 check( '9aj2 a "(cf. TD 2)" beside the quotation that the words support still counts', 'high' === $q[0]['status'], json_encode( $q ) );
 
+// 9ak. The link beside the cite wins over a document named in the lead, which belongs to an earlier quotation.
+$q = run1( $an, $get, '<p>Test Document says, “' . $riv . '” (<a href="https://www.vatican.va/test/doc-a_test-document.html">Paragraph 2</a>). Likewise the fathers of the council stated, “' . $acx . '” (<a href="https://www.vatican.va/test/doc-b_another-charter.html">Paragraph 3</a>).</p>' );
+$second = end( $q );
+check( '9ak the link names the document although the lead names another -> high', 'high' === $second['status'] && 'another-charter' === $second['typed'][0]['doc'], json_encode( $q ) );
+
+// 9al. "(cf. TD 5)" in the author's sentence after a quotation is a side reference: dropped when the words say otherwise.
+$q = run1( $an, $get, '<p>Francis writes,</p><blockquote><p>' . $riv . '</p></blockquote><p>The teachings point the way and guide our actions (cf. AC 3). But God rules us.</p>' );
+check( '9al a side "(cf. AC 3)" after the quotation that the words do not support -> no conflict', 'conflict' !== $q[0]['status'] && empty( $q[0]['typed'] ), json_encode( $q ) );
+
 // 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
 $bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
 $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );

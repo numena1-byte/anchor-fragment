@@ -192,6 +192,21 @@ class AF_Analyzer {
 			if ( ! empty( $q['declared'] ) && isset( $this->docs[ $q['declared']['doc'] ] ) ) {
 				$typed[] = array( 'doc' => $q['declared']['doc'], 'loc' => $q['declared']['loc'] );
 			}
+			// A "(cf. CCC 1955)" in the author's own sentence next to the quotation is a side reference, not the source of it.
+			if ( ! $has_own ) {
+				$plain = preg_replace( '/[(\[]\s*cf\.?\s[^()\[\]]*[)\]]/iu', ' ', $ctx );
+				if ( $plain !== $ctx ) {
+					$keep = array();
+					foreach ( $this->cites( $plain ) as $t ) {
+						$keep[ $t['doc'] . '|' . implode( ',', (array) $t['loc'] ) ] = true;
+					}
+					foreach ( $typed as $k => $t ) {
+						if ( ! isset( $keep[ $t['doc'] . '|' . implode( ',', (array) $t['loc'] ) ] ) ) {
+							$typed[ $k ]['soft'] = true;
+						}
+					}
+				}
+			}
 			// "(cf. CCC 1955)" is a cross-reference, usually the source's own: it counts only when the words agree.
 			if ( $has_own && preg_match( '/^[\s(\[]*cf\.?\s/iu', $q['cite'] ) ) {
 				foreach ( $typed as $k => $t ) {
@@ -235,11 +250,9 @@ class AF_Analyzer {
 				}
 				$guess = false;
 				if ( null === $doc ) {
-					$doc = $lead_doc;
 					// A link beside the quotation that goes to one document says which: "(<a href=...gaudium-et-spes...>Paragraph 69</a>)".
-					if ( null === $doc && 1 === count( $hint_link ) ) {
-						$doc = $hint_link[0];
-					}
+					// It comes before the document named in the lead, which may belong to an earlier quotation.
+					$doc = 1 === count( $hint_link ) ? $hint_link[0] : $lead_doc;
 					if ( null === $doc && null !== $carry ) {
 						$doc   = $carry;
 						$guess = true; // Only the document cited last: counts when the words agree.
