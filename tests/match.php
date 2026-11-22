@@ -351,6 +351,13 @@ check( '9ap2 a real cite "Test Document 4 says" still counts', 'high' === $q[0][
 $q = run1( $an, $get, '<p>As it says, “' . $bq3 . '” (<em>Test Document</em> [TD] 4).</p>' );
 check( '9aq "(Test Document [TD] 4)" is read as a cite', 'high' === $q[0]['status'] && ! empty( $q[0]['typed'] ), json_encode( $q[0] ) );
 
+// 9ar. "(Contrast this with Test Document 4: “…”)" after a block quote is the cite of the quotation inside it, not of the block quote.
+$bread2 = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
+$q = run1( $an, $get, '<blockquote>' . $bread2 . '</blockquote><p>(Contrast this with Test Document 4: “' . $bq3 . '”)</p><blockquote>' . $bread2 . ' Again.</blockquote>' );
+check( '9ar block quote does not take the cite of the next paragraph\'s own quotation', empty( $q[0]['typed'] ) && 'conflict' !== $q[0]['status'], json_encode( $q[0] ) );
+check( '9ar2 a block quote after it does not take that cite either', empty( $q[1]['typed'] ), json_encode( $q[1] ) );
+check( '9ar3 the paragraph\'s own quotation keeps its cite', 'inline' === $q[2]['kind'] && 'high' === $q[2]['status'], json_encode( $q[2] ) );
+
 // 16. A bare "(n)" takes its document from an earlier cite, which is a guess: kept when the text agrees, dropped when it does not.
 $bread = 'Bread shared at a long table tastes of more than flour and salt, because the hunger it answers is never only of the body.';
 $q = run1( $an, $get, '<p>As Test Document 3 says:</p><blockquote>Alpha begins the story of a long road that crosses many fields and rivers before the sea.</blockquote><p>And then:</p><blockquote>' . $bread . '</blockquote><p>(2)</p>' );

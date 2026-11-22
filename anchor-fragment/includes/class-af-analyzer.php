@@ -760,6 +760,15 @@ class AF_Analyzer {
 			return $out;
 		};
 
+		// "(Contrast these with CCC 1934: “Created in the image…”)" next to a block quote: the cite stands before a quotation
+		// that ends the paragraph, so it is that quotation's, not the neighbouring block quote's.
+		$owned = function ( $text ) {
+			if ( ! preg_match( '/^(.*?)[\x{201C}"]([^\x{201D}"]{40,700})[\x{201D}"][\s)\].]{0,4}$/us', $text, $m ) ) {
+				return false;
+			}
+			return (bool) $this->cites( $m[1] ) && ! $this->cites( $m[2] );
+		};
+
 		$out = array();
 
 		foreach ( $xp->query( '//blockquote' ) as $bq ) {
@@ -770,6 +779,14 @@ class AF_Analyzer {
 			$next_el = $adjacent( $bq, 'nextSibling' );
 			$lead    = $prev_el ? mb_substr( self::clean( $prev_el->textContent ), -300 ) : '';
 			$after   = $next_el ? mb_substr( self::clean( $next_el->textContent ), 0, 200 ) : '';
+			if ( $prev_el && $owned( self::clean( $prev_el->textContent ) ) ) {
+				$lead    = '';
+				$prev_el = null;
+			}
+			if ( $next_el && $owned( self::clean( $next_el->textContent ) ) ) {
+				$after   = '';
+				$next_el = null;
+			}
 			$links   = array_merge( $hrefs( $bq ), $hrefs( $prev_el ), $hrefs( $next_el ) );
 
 			$cite = '';
