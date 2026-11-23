@@ -289,6 +289,12 @@ class AF_Service {
 			}
 		}
 
+		// So is a post whose title says so, or that says the author translated the text himself ("my own translation of the Latin").
+		$plain_text = wp_strip_all_tags( $post->post_content );
+		if ( preg_match( '/translat/i', get_the_title( $post ) ) || self::own_translation( $plain_text ) ) {
+			$translation = true;
+		}
+
 		$analyzer = new AF_Analyzer( self::registry() );
 		$analyzer->set_xref( AF_Xref::map() );
 		$res      = $analyzer->analyze(
@@ -1171,5 +1177,10 @@ class AF_Service {
 			$rows[] = $row;
 		}
 		return $rows;
+	}
+
+	/** Whether the text says the author supplies his own translation of the source ("my own translation", "my translation of the Latin"). */
+	public static function own_translation( $text ) {
+		return (bool) preg_match( '/\b(?:my|our)\s+(?:own\s+)?(?:\w+\s+)?translations?\b|\btranslations?\s+(?:is|are)\s+(?:my|mine)\b|\bI\s+(?:offer|give|provide|have\s+translated|translate|translated)\b[^.]{0,40}\b(?:translation|translated|from\s+the\s+(?:Latin|Greek|Italian|Spanish|French|German))/iu', (string) $text );
 	}
 }
