@@ -480,7 +480,11 @@ class AF_Analyzer {
 					'coverage' => $best['coverage'],
 				) : null,
 				'alt'       => $alts,
-				'typed'     => array_values( $typed ),
+				// Whether the cited document has an index here: without one the cite cannot be checked at all.
+				'typed'     => array_values( array_map( function ( $t ) use ( $indexes ) {
+					$t['indexed'] = isset( $indexes[ $t['doc'] ] );
+					return $t;
+				}, $typed ) ),
 				'hints'     => $hints,
 				'tag_hints' => $tag_docs,
 				'note'      => $note,

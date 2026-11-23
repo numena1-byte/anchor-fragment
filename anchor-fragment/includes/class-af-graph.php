@@ -8,7 +8,7 @@
  *   post_id            -> post (the post's URL, later a strong reference)
  *   doc, locator       -> anchor.document, anchor.locator
  *   basis              -> basis   ("typed": the author cited it and the text agrees; "text-match": found by the words alone)
- *   status             -> how sure the matcher is: high, medium, low, ambiguous, conflict, partial, cross_reference, unchecked
+ *   status             -> how sure the matcher is: high, medium, low, ambiguous, conflict, partial, cross_reference, unchecked, no_index, not_found
  *   quote_hash         -> commentary.contentHash (a fingerprint of the quotation; no text is kept)
  *   matched_at         -> matchedAt
  *   confirmed          -> confirmed (NULL not reviewed, 1 yes, 0 no); kept when a post is matched again
@@ -139,7 +139,16 @@ class AF_Graph {
 					if ( 'high' === $status && ! ( ! empty( $q['best'] ) && $t['doc'] === $q['best']['doc'] && in_array( $loc, $q['best']['locators'], true ) ) ) {
 						continue;
 					}
-					$add( $q, $t['doc'], $loc, 'typed', 'conflict' === $status ? 'conflict' : ( in_array( $status, array( 'high', 'cross_reference' ), true ) ? $status : 'unchecked' ), null );
+					if ( 'conflict' === $status || in_array( $status, array( 'high', 'cross_reference' ), true ) ) {
+						$typed_status = $status;
+					} elseif ( isset( $t['indexed'] ) && ! $t['indexed'] ) {
+						$typed_status = 'no_index'; // The cited document has no index here, so nothing could be checked.
+					} elseif ( isset( $t['indexed'] ) && in_array( $status, array( 'no_match', 'too_short', 'out_of_scope' ), true ) ) {
+						$typed_status = 'not_found'; // The document is indexed and the quoted words are in none of it: a likely misquote or paraphrase.
+					} else {
+						$typed_status = 'unchecked';
+					}
+					$add( $q, $t['doc'], $loc, 'typed', $typed_status, null );
 				}
 			}
 		}
@@ -378,7 +387,10 @@ class AF_Graph {
 			'review'    => array( 'conflict', 'ambiguous' ),
 			'conflict'  => array( 'conflict' ),
 			'ambiguous' => array( 'ambiguous' ),
-			'unchecked' => array( 'unchecked' ),
+			'unchecked' => array( 'unchecked', 'no_index', 'not_found' ),
+			'no_index'  => array( 'no_index' ),
+			'not_found' => array( 'not_found' ),
+			'fix'       => array( 'conflict', 'not_found' ),
 			'all'       => array( 'all' ),
 		);
 		return $sets[ $name ] ?? ( false !== strpos( (string) $name, ',' ) ? array_map( 'sanitize_key', explode( ',', $name ) ) : array( sanitize_key( $name ) ) );

@@ -135,6 +135,18 @@ $rx = AF_Graph::rows_from_result( $resX );
 check( 'cross_reference records the matched and the typed paragraph', 2 === count( $rx ) && null !== $by( $rx, 'catechism', 112 ) && null !== $by( $rx, 'dei-verbum', 12 ) && 'cross_reference' === $by( $rx, 'dei-verbum', 12 )['status'] && 'cross_reference' === $by( $rx, 'catechism', 112 )['status'], json_encode( $rx ) );
 check( 'cross_reference is in the default view and not in the review list', in_array( 'cross_reference', AF_Graph::status_set( '' ), true ) && ! in_array( 'cross_reference', AF_Graph::status_set( 'review' ), true ) && in_array( 'cross_reference', AF_Graph::CONFIDENT, true ) );
 
+// A typed cite the words could not confirm: no_index when the cited document has no index here, not_found when it has one and the words are not in it.
+$resN = array( 'quotes' => array(
+	array( 'i' => 1, 'status' => 'no_match', 'words' => 30, 'hash' => 'hnf', 'best' => null, 'alt' => array(), 'typed' => array( array( 'doc' => 'catechism', 'loc' => array( 2349 ), 'indexed' => true ) ) ),
+	array( 'i' => 2, 'status' => 'out_of_scope', 'words' => 30, 'hash' => 'hni', 'best' => null, 'alt' => array(), 'typed' => array( array( 'doc' => 'humanae-vitae', 'loc' => array( 12 ), 'indexed' => false ) ) ),
+	array( 'i' => 3, 'status' => 'no_match', 'words' => 30, 'hash' => 'hold', 'best' => null, 'alt' => array(), 'typed' => array( array( 'doc' => 'catechism', 'loc' => array( 7 ) ) ) ),
+) );
+$rn = AF_Graph::rows_from_result( $resN );
+check( 'typed cite, document indexed, words absent -> not_found', 'not_found' === $by( $rn, 'catechism', 2349 )['status'], json_encode( $rn ) );
+check( 'typed cite, document not indexed -> no_index', 'no_index' === $by( $rn, 'humanae-vitae', 12 )['status'], json_encode( $rn ) );
+check( 'typed cite from an older result (no indexed flag) stays unchecked', 'unchecked' === $by( $rn, 'catechism', 7 )['status'], json_encode( $rn ) );
+check( 'the filters: unchecked covers both, fix = conflict + not_found', array( 'not_found' ) === AF_Graph::status_set( 'not_found' ) && array( 'no_index' ) === AF_Graph::status_set( 'no_index' ) && in_array( 'not_found', AF_Graph::status_set( 'unchecked' ), true ) && in_array( 'no_index', AF_Graph::status_set( 'unchecked' ), true ) && array( 'conflict', 'not_found' ) === AF_Graph::status_set( 'fix' ) && ! in_array( 'not_found', AF_Graph::CONFIDENT, true ) );
+
 // An ambiguous quotation between two documents records both candidates; a weak alternative is left out.
 $resA = array( 'quotes' => array( array( 'i' => 1, 'status' => 'ambiguous', 'words' => 19, 'hash' => 'hamb', 'best' => $b( 'evangelii-gaudium', array( 48 ), 1.0 ), 'alt' => array( array( 'doc' => 'dilexi-te', 'locators' => array( 36 ), 'coverage' => 1.0 ), array( 'doc' => 'laudato-si', 'locators' => array( 9 ), 'coverage' => 0.3 ) ), 'typed' => array() ) ) );
 $ra = AF_Graph::rows_from_result( $resA );
