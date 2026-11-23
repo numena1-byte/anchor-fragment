@@ -281,6 +281,14 @@ class AF_Service {
 			$tags = wp_list_pluck( $terms, 'name' );
 		}
 
+		// A post tagged as a translation quotes the site's own rendering, not the Vatican text.
+		$translation = false;
+		foreach ( $tags as $tag_name ) {
+			if ( preg_match( '/translat/i', $tag_name ) ) {
+				$translation = true;
+			}
+		}
+
 		$analyzer = new AF_Analyzer( self::registry() );
 		$analyzer->set_xref( AF_Xref::map() );
 		$res      = $analyzer->analyze(
@@ -297,6 +305,7 @@ class AF_Service {
 			'url'            => get_permalink( $post ),
 			'ran_at'         => time(),
 			'plugin_version' => AF_VERSION,
+			'translation'    => $translation,
 			'unindexed'      => $unindexed,
 		) + $res;
 		update_option( 'af_match_' . $post->ID, $res, false );

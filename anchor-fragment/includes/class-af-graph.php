@@ -8,7 +8,7 @@
  *   post_id            -> post (the post's URL, later a strong reference)
  *   doc, locator       -> anchor.document, anchor.locator
  *   basis              -> basis   ("typed": the author cited it and the text agrees; "text-match": found by the words alone)
- *   status             -> how sure the matcher is: high, medium, low, ambiguous, conflict, partial, cross_reference, unchecked, no_index, not_found
+ *   status             -> how sure the matcher is: high, medium, low, ambiguous, conflict, partial, cross_reference, unchecked, no_index, mention, translation, not_found
  *   quote_hash         -> commentary.contentHash (a fingerprint of the quotation; no text is kept)
  *   matched_at         -> matchedAt
  *   confirmed          -> confirmed (NULL not reviewed, 1 yes, 0 no); kept when a post is matched again
@@ -143,6 +143,10 @@ class AF_Graph {
 						$typed_status = $status;
 					} elseif ( isset( $t['indexed'] ) && ! $t['indexed'] ) {
 						$typed_status = 'no_index'; // The cited document has no index here, so nothing could be checked.
+					} elseif ( ! empty( $res['translation'] ) ) {
+						$typed_status = 'translation'; // The post is itself a translation, so its wording cannot be expected to match the Vatican text.
+					} elseif ( isset( $t['attached'] ) && ! $t['attached'] ) {
+						$typed_status = 'mention'; // The post names that paragraph near the quotation, but not as the source of it.
 					} elseif ( isset( $t['indexed'] ) && in_array( $status, array( 'no_match', 'too_short', 'out_of_scope' ), true ) ) {
 						$typed_status = 'not_found'; // The document is indexed and the quoted words are in none of it: a likely misquote or paraphrase.
 					} else {
@@ -387,9 +391,11 @@ class AF_Graph {
 			'review'    => array( 'conflict', 'ambiguous' ),
 			'conflict'  => array( 'conflict' ),
 			'ambiguous' => array( 'ambiguous' ),
-			'unchecked' => array( 'unchecked', 'no_index', 'not_found' ),
+			'unchecked' => array( 'unchecked', 'no_index', 'mention', 'translation', 'not_found' ),
 			'no_index'  => array( 'no_index' ),
 			'not_found' => array( 'not_found' ),
+			'mention'   => array( 'mention' ),
+			'translation' => array( 'translation' ),
 			'fix'       => array( 'conflict', 'not_found' ),
 			'all'       => array( 'all' ),
 		);

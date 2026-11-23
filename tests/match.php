@@ -386,5 +386,13 @@ check( '18c declared document not in the registry is ignored', 'conflict' !== $q
 $q = run1( $an, $get, str_replace( 'class="af-quote" ', '', $mk( 'test-document', 6, $tdp4 ) ) );
 check( '18d data attributes without the af-quote class are ignored', 'conflict' !== $q[0]['status'], json_encode( $q ) );
 
+// 9as. 0.12.1: a cite named earlier in the text is a mention, not the quotation's cite; one in the introducing sentence or right after is attached.
+$q = run1( $an, $get, '<p>Test Document 4 is where the council first spoke of this. Years later a critic wrote a long reply to it. He said, “' . $bread2 . '”</p>' );
+check( '9as a document named two sentences back is a mention', ! empty( $q[0]['typed'] ) && false === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
+$q = run1( $an, $get, '<p>As Test Document 4 says, “' . $bread2 . '”</p>' );
+check( '9as2 the introducing sentence names it: attached', ! empty( $q[0]['typed'] ) && true === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
+$q = run1( $an, $get, '<p>The text says, “' . $bread2 . '” (Test Document 4).</p>' );
+check( '9as3 a cite right after the quotation: attached', ! empty( $q[0]['typed'] ) && true === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

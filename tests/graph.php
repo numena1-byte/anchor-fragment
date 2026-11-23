@@ -147,6 +147,18 @@ check( 'typed cite, document not indexed -> no_index', 'no_index' === $by( $rn, 
 check( 'typed cite from an older result (no indexed flag) stays unchecked', 'unchecked' === $by( $rn, 'catechism', 7 )['status'], json_encode( $rn ) );
 check( 'the filters: unchecked covers both, fix = conflict + not_found', array( 'not_found' ) === AF_Graph::status_set( 'not_found' ) && array( 'no_index' ) === AF_Graph::status_set( 'no_index' ) && in_array( 'not_found', AF_Graph::status_set( 'unchecked' ), true ) && in_array( 'no_index', AF_Graph::status_set( 'unchecked' ), true ) && array( 'conflict', 'not_found' ) === AF_Graph::status_set( 'fix' ) && ! in_array( 'not_found', AF_Graph::CONFIDENT, true ) );
 
+// 0.12.1: a cite mentioned near the quotation (not attached) is 'mention'; in a translation post it is 'translation'; confirmed ones are unaffected.
+$resM = array( 'quotes' => array(
+	array( 'i' => 1, 'status' => 'no_match', 'words' => 30, 'hash' => 'hm1', 'best' => null, 'alt' => array(), 'typed' => array( array( 'doc' => 'lumen-gentium', 'loc' => array( 25 ), 'indexed' => true, 'attached' => false ) ) ),
+	array( 'i' => 2, 'status' => 'no_match', 'words' => 30, 'hash' => 'hm2', 'best' => null, 'alt' => array(), 'typed' => array( array( 'doc' => 'catechism', 'loc' => array( 99 ), 'indexed' => true, 'attached' => true ) ) ),
+) );
+$rm = AF_Graph::rows_from_result( $resM );
+check( '0.12.1 unattached typed cite -> mention', 'mention' === $by( $rm, 'lumen-gentium', 25 )['status'] && 'not_found' === $by( $rm, 'catechism', 99 )['status'], json_encode( $rm ) );
+$resM['translation'] = true;
+$rt = AF_Graph::rows_from_result( $resM );
+check( '0.12.1 translation post -> translation', 'translation' === $by( $rt, 'catechism', 99 )['status'] && 'translation' === $by( $rt, 'lumen-gentium', 25 )['status'], json_encode( $rt ) );
+check( '0.12.1 filters include mention and translation under unchecked', array( 'mention' ) === AF_Graph::status_set( 'mention' ) && array( 'translation' ) === AF_Graph::status_set( 'translation' ) && in_array( 'mention', AF_Graph::status_set( 'unchecked' ), true ) && in_array( 'translation', AF_Graph::status_set( 'unchecked' ), true ) && ! in_array( 'mention', AF_Graph::CONFIDENT, true ) );
+
 // An ambiguous quotation between two documents records both candidates; a weak alternative is left out.
 $resA = array( 'quotes' => array( array( 'i' => 1, 'status' => 'ambiguous', 'words' => 19, 'hash' => 'hamb', 'best' => $b( 'evangelii-gaudium', array( 48 ), 1.0 ), 'alt' => array( array( 'doc' => 'dilexi-te', 'locators' => array( 36 ), 'coverage' => 1.0 ), array( 'doc' => 'laudato-si', 'locators' => array( 9 ), 'coverage' => 0.3 ) ), 'typed' => array() ) ) );
 $ra = AF_Graph::rows_from_result( $resA );

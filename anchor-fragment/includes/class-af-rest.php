@@ -590,7 +590,7 @@ class AF_Rest {
 				<?php endforeach; ?>
 				</select>
 				Paragraph <input type="text" name="locator" size="6">
-				Confidence <select name="status"><option value="">high + medium</option><option value="high">high only</option><option value="weaker">+ low, partial</option><option value="review">conflict + ambiguous</option><option value="conflict">conflict only</option><option value="ambiguous">ambiguous only</option><option value="cross_reference">cross-references (the Catechism quotes the source)</option><option value="fix">to fix (conflict + words not found)</option><option value="not_found">typed, words not found in that paragraph</option><option value="no_index">typed, document has no index</option><option value="unchecked">typed, any not checked</option><option value="all">everything</option></select>
+				Confidence <select name="status"><option value="">high + medium</option><option value="high">high only</option><option value="weaker">+ low, partial</option><option value="review">conflict + ambiguous</option><option value="conflict">conflict only</option><option value="ambiguous">ambiguous only</option><option value="cross_reference">cross-references (the Catechism quotes the source)</option><option value="fix">to fix (conflict + check wording or number)</option><option value="not_found">typed, check wording or paragraph number</option><option value="mention">typed, mentioned near the quotation (not its cite)</option><option value="translation">typed, in a translation post</option><option value="no_index">typed, document has no index</option><option value="unchecked">typed, any not checked</option><option value="all">everything</option></select>
 				<button class="button" type="submit">Show</button>
 			</form>
 			<div id="af-graph-out" style="margin-top:1em;max-width:70em"></div>
@@ -598,7 +598,7 @@ class AF_Rest {
 			<h3>Review citations</h3>
 			<p>Each entry is one quotation. For a conflict, the author typed one paragraph and the words matched another: mark which is right. Decisions are kept when posts are matched again, and wrong edges leave every report.</p>
 			<form id="af-review-form">
-				<select name="status"><option value="review">conflict + ambiguous</option><option value="conflict">conflict only</option><option value="ambiguous">ambiguous only</option><option value="fix">to fix (conflict + words not found)</option><option value="not_found">typed, words not found in that paragraph</option><option value="no_index">typed, document has no index</option><option value="unchecked">typed, any not checked</option></select>
+				<select name="status"><option value="review">conflict + ambiguous</option><option value="conflict">conflict only</option><option value="ambiguous">ambiguous only</option><option value="fix">to fix (conflict + check wording or number)</option><option value="not_found">typed, check wording or paragraph number</option><option value="mention">typed, mentioned near the quotation (not its cite)</option><option value="translation">typed, in a translation post</option><option value="no_index">typed, document has no index</option><option value="unchecked">typed, any not checked</option></select>
 				<label><input type="checkbox" name="reviewed"> include ones already reviewed</label>
 				<button class="button" type="submit">Load</button>
 			</form>

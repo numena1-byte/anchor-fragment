@@ -209,6 +209,21 @@ class AF_Analyzer {
 
 			// Citations the author typed.
 			$typed = $this->cites( $has_own ? $q['cite'] : $ctx );
+			// A cite is attached to the quotation when it is its own (a bracket, footer or footnote cite), stands right after
+			// it, or ends the sentence that introduces it ("As Francis says in EG 30, “…”"). A document and number found
+			// elsewhere in the text near it, as when the author discusses a paragraph and then quotes somebody else, is a
+			// mention: the post refers to that paragraph, but not as the source of this quotation.
+			$attached = array();
+			if ( ! $has_own ) {
+				$lead_sent = preg_split( '/(?<=[.!?])\s+(?=[\p{Lu}\x{201C}"(])/u', trim( $q['lead'] ) );
+				$nearby    = trim( ( $lead_sent ? end( $lead_sent ) : '' ) . ' | ' . mb_substr( ltrim( $q['after'], " \t\n\x{201D}\x{2019}\"'" ), 0, 60 ) );
+				foreach ( $this->cites( $nearby ) as $c ) {
+					$attached[ $c['doc'] . '|' . implode( ',', (array) $c['loc'] ) ] = true;
+				}
+			}
+			foreach ( $typed as $k => $t ) {
+				$typed[ $k ]['attached'] = $has_own || isset( $attached[ $t['doc'] . '|' . implode( ',', (array) $t['loc'] ) ] );
+			}
 			// The cite after the next quotation in the same sentence may be meant for this one too: it counts only when the
 			// words agree.
 			if ( ! $has_own && ! empty( $q['shared'] ) ) {
