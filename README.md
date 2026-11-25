@@ -33,3 +33,7 @@ Cites of a work the registry does not hold ("(EV 56)", "HV no. 20") are no longe
 ## 0.13.2
 
 Humanae vitae, Evangelium vitae and Donum veritatis print a signature line and the notes after the last numbered paragraph. The parser read all of that as part of the last paragraph (HV 31 came to nearly 7,000 characters), so a quotation matching a footnote was pinned on it. A document can now name where its last paragraph ends (`parse.end_at` in the registry, a regular expression); the three documents end at "Given in/at ..." or "NOTES". Documents are fetched again when their parse options change, so the three need "Fetch" once on the test page.
+
+## 0.14.0
+
+A new screen, Tools > Citations to fix, lists the quotations whose cite and words disagree (or whose cite could not be found, or whose words fit several paragraphs). One card per quotation, grouped by post: what you cited, where the words are, a plain-words diagnosis (next to the cited paragraph, same document, another document), links to both paragraphs on vatican.va, a side-by-side comparison of the two paragraphs with the quoted words highlighted, and a link to edit the post. Nothing in a post is changed. For each card you can record "my cite is right", "the cite needs fixing" or "ignore"; the card leaves the to-do list and the choice can be undone. A decision survives matching the post again. Filters: kind, to do / decided, document, words in the title. "Download these as CSV" saves the list.

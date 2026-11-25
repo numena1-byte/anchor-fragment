@@ -668,6 +668,7 @@ class AF_Rest {
 			<div id="af-graph-out" style="margin-top:1em;max-width:70em"></div>
 
 			<h3>Review citations</h3>
+			<p>For a fuller screen, with the paragraphs side by side and a to-do list, see <a href="<?php echo esc_url( admin_url( 'tools.php?page=af-fix' ) ); ?>">Tools → Citations to fix</a>.</p>
 			<p>Each entry is one quotation. For a conflict, the author typed one paragraph and the words matched another: mark which is right. Decisions are kept when posts are matched again, and wrong edges leave every report.</p>
 			<form id="af-review-form">
 				<select name="status"><option value="review">conflict + ambiguous</option><option value="conflict">conflict only</option><option value="ambiguous">ambiguous only</option><option value="fix">to fix (conflict + check wording or number)</option><option value="not_found">typed, check wording or paragraph number</option><option value="mention">typed, mentioned near the quotation (not its cite)</option><option value="translation">typed, in a translation post</option><option value="semantic">typed, confirmed by meaning (second opinion)</option><option value="no_index">typed, document has no index</option><option value="unchecked">typed, any not checked</option></select>

@@ -461,6 +461,8 @@ class AF_Graph {
 			$post  = get_post( (int) $k['post_id'] );
 			$out[] = array(
 				'post_id' => (int) $k['post_id'],
+				'hash'    => (string) $k['quote_hash'],
+				'ord'     => (int) $k['quote_ord'],
 				'title'   => $post ? $post->post_title : '',
 				'url'     => $post ? get_permalink( $post ) : '',
 				'excerpt' => $exc,
