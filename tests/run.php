@@ -166,5 +166,14 @@ check( 'split inline: a number that is not the next one is left alone', array( '
 $sd = AF_Parser::parse( $si, 2865, array( 'bare_numbers' => true, 'repair' => false, 'after' => 2074, 'window' => 5 ) );
 check( 'split inline: off by default', ! isset( $sd['paragraphs']['2077'] ) );
 
+// 0.13.2: the signature and the notes after the last paragraph are not part of it (end_at).
+$ei = '<html><body><p>1. First paragraph of the encyclical.</p><p>2. Second paragraph.</p><p>Its second half continues here.</p><p>Given at St. Peter\'s, Rome, on the 25th day of July.</p><p>PAUL VI</p><p>NOTES</p><p>(1) See Pius IX, encyc. letter Qui pluribus, a quotation that is not part of paragraph 2.</p></body></html>';
+$ep = AF_Parser::parse( $ei, 2, array( 'end_at' => '/^(Given (?:in|at) |NOTES\\s*$)/' ) );
+check( 'end_at: the last paragraph ends before the signature', false !== strpos( $ep['paragraphs']['2']['full'], 'second half' ) && false === strpos( $ep['paragraphs']['2']['full'], 'Pius IX' ) && false === strpos( $ep['paragraphs']['2']['full'], 'Given at' ), json_encode( $ep['paragraphs']['2'] ) );
+$en = AF_Parser::parse( $ei, 2 );
+check( 'end_at: without it the notes belong to the last paragraph (the old behaviour)', false !== strpos( $en['paragraphs']['2']['full'], 'Pius IX' ) );
+$eb = AF_Parser::parse( $ei, 2, array( 'end_at' => '/(unclosed/' ) );
+check( 'end_at: a pattern that is not valid is ignored', isset( $eb['paragraphs']['2'] ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

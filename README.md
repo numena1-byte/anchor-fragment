@@ -29,3 +29,7 @@ The request and answer format is in the header of `anchor-fragment/includes/clas
 
 Cites of a work the registry does not hold ("(EV 56)", "HV no. 20") are no longer attached to a registered document named in the same sentence. Donum veritatis, Evangelium vitae and Humanae vitae are registered; `DV`, shared by Dei verbum and Donum veritatis, is settled by the words, or by the document named just before. The second-opinion rule is as above, answers made under the 0.13.0 rule are read again under the new one from the signals they kept, and the Worker takes a `passage` for multi-page documents. Redeploy `worker/af-semantic-worker.js` to use these.
 
+
+## 0.13.2
+
+Humanae vitae, Evangelium vitae and Donum veritatis print a signature line and the notes after the last numbered paragraph. The parser read all of that as part of the last paragraph (HV 31 came to nearly 7,000 characters), so a quotation matching a footnote was pinned on it. A document can now name where its last paragraph ends (`parse.end_at` in the registry, a regular expression); the three documents end at "Given in/at ..." or "NOTES". Documents are fetched again when their parse options change, so the three need "Fetch" once on the test page.

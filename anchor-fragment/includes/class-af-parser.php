@@ -84,6 +84,8 @@ class AF_Parser {
 	 *   after:        the page is part of a longer document and this is the last number on the page before it;
 	 *   repair:       false switches off the repair of single missing numbers (default true);
 	 *   window:       how far past that the first number on this page may jump (default MAX_SKIP).
+	 *   end_at:       a regular expression; a paragraph block that matches ends the current paragraph and is not part of any (the signature line and
+	 *                 the notes that some pages print after the last numbered paragraph, which would otherwise be read as part of it).
 	 *   split_inline: a block may hold two paragraphs, the second starting mid-text ("... validity. 2077 The gift ...").
 	 *                 The block is split where exactly the next number follows a sentence end and precedes a capital.
 	 * }
@@ -152,11 +154,16 @@ class AF_Parser {
 		$rej_blocks = array();
 		$last       = $from;
 		$cur        = null;
-		$split = ! empty( $opts['split_inline'] );
+		$split  = ! empty( $opts['split_inline'] );
+		$end_at = isset( $opts['end_at'] ) && is_string( $opts['end_at'] ) && false !== @preg_match( $opts['end_at'], '' ) ? $opts['end_at'] : ''; // phpcs:ignore WordPress.PHP.NoSilencedErrors
 		for ( $i = 0; $i < count( $blocks ); $i++ ) {
 			$b = $blocks[ $i ];
 			if ( preg_match( '/^h[1-6]$/', $b['tag'] ) || $b['note'] ) {
 				$cur = null; // Headings and footnotes end the current paragraph.
+				continue;
+			}
+			if ( '' !== $end_at && 'p' === $b['tag'] && preg_match( $end_at, $b['text'] ) ) {
+				$cur = null; // The signature or the notes after the last paragraph.
 				continue;
 			}
 			if ( $split && 'p' === $b['tag'] ) {

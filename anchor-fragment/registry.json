@@ -235,7 +235,10 @@
 			"scheme": "paragraph",
 			"expected_count": 42,
 			"max_locator": 42,
-			"url": "https://www.vatican.va/roman_curia/congregations/cfaith/documents/rc_con_cfaith_doc_19900524_theologian-vocation_en.html"
+			"url": "https://www.vatican.va/roman_curia/congregations/cfaith/documents/rc_con_cfaith_doc_19900524_theologian-vocation_en.html",
+			"parse": {
+				"end_at": "/^(Given (?:in|at) |NOTES\\s*$)/"
+			}
 		},
 		{
 			"id": "evangelium-vitae",
@@ -249,7 +252,10 @@
 			"scheme": "paragraph",
 			"expected_count": 105,
 			"max_locator": 105,
-			"url": "https://www.vatican.va/content/john-paul-ii/en/encyclicals/documents/hf_jp-ii_enc_25031995_evangelium-vitae.html"
+			"url": "https://www.vatican.va/content/john-paul-ii/en/encyclicals/documents/hf_jp-ii_enc_25031995_evangelium-vitae.html",
+			"parse": {
+				"end_at": "/^(Given (?:in|at) |NOTES\\s*$)/"
+			}
 		},
 		{
 			"id": "humanae-vitae",
@@ -263,7 +269,10 @@
 			"scheme": "paragraph",
 			"expected_count": 31,
 			"max_locator": 31,
-			"url": "https://www.vatican.va/content/paul-vi/en/encyclicals/documents/hf_p-vi_enc_25071968_humanae-vitae.html"
+			"url": "https://www.vatican.va/content/paul-vi/en/encyclicals/documents/hf_p-vi_enc_25071968_humanae-vitae.html",
+			"parse": {
+				"end_at": "/^(Given (?:in|at) |NOTES\\s*$)/"
+			}
 		}
 	]
 }

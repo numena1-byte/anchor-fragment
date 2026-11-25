@@ -127,6 +127,7 @@ class AF_Service {
 		$cached = get_option( $key );
 		if ( ! $refresh && is_array( $cached )
 			&& ( $cached['meta']['parser_version'] ?? 0 ) === AF_Parser::VERSION
+			&& ( $cached['meta']['parse_sig'] ?? md5( '[]' ) ) === md5( wp_json_encode( self::parse_opts( $entry ) ) )
 			&& ( $cached['meta']['url'] ?? '' ) === $entry['url']
 			&& time() - (int) $cached['meta']['fetched_at'] < self::CACHE_TTL ) {
 			$cached['meta']['source'] = 'cache';
@@ -143,7 +144,7 @@ class AF_Service {
 		}
 
 		list( $html, $charset ) = AF_Parser::to_utf8( $res['body'], $res['content_type'] );
-		$parsed                 = AF_Parser::parse( $html, (int) ( $entry['max_locator'] ?? 0 ) );
+		$parsed                 = AF_Parser::parse( $html, (int) ( $entry['max_locator'] ?? 0 ), self::parse_opts( $entry ) );
 
 		$paras     = array();
 		$no_frag   = array();
@@ -176,6 +177,7 @@ class AF_Service {
 				'fetch_ms'        => (int) round( ( microtime( true ) - $t0 ) * 1000 ),
 				'parser_version'  => AF_Parser::VERSION,
 				'source'          => 'fetched',
+				'parse_sig'       => md5( wp_json_encode( self::parse_opts( $entry ) ) ),
 				'expected_count'  => $entry['expected_count'] ?? null,
 				'stats'           => $parsed['stats'] + array( 'no_fragment' => $no_frag ),
 			),
