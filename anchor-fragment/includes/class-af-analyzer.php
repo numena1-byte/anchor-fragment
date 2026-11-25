@@ -487,6 +487,8 @@ class AF_Analyzer {
 				'kind'      => $q['kind'],
 				'hash'      => substr( sha1( AF_Parser::fold( $text ) ), 0, 16 ),
 				'excerpt'   => mb_substr( $text, 0, 110 ),
+				// The words of a quotation nothing matched, kept on this site only so that the optional second opinion can be asked later.
+				'text'      => 'no_match' === $status ? mb_substr( $text, 0, 3000 ) : '',
 				'words'     => $tokens,
 				'status'    => $status,
 				'best'      => $best ? array(

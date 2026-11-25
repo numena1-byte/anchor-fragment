@@ -8,7 +8,7 @@
  *   post_id            -> post (the post's URL, later a strong reference)
  *   doc, locator       -> anchor.document, anchor.locator
  *   basis              -> basis   ("typed": the author cited it and the text agrees; "text-match": found by the words alone)
- *   status             -> how sure the matcher is: high, medium, low, ambiguous, conflict, partial, cross_reference, unchecked, no_index, mention, translation, not_found
+ *   status             -> how sure the matcher is: high, medium, low, ambiguous, conflict, partial, cross_reference, unchecked, no_index, mention, translation, not_found, semantic (a second opinion, if the site owner set one up, found the same meaning)
  *   quote_hash         -> commentary.contentHash (a fingerprint of the quotation; no text is kept)
  *   matched_at         -> matchedAt
  *   confirmed          -> confirmed (NULL not reviewed, 1 yes, 0 no); kept when a post is matched again
@@ -93,8 +93,11 @@ class AF_Graph {
 	 * @return array key => row
 	 */
 	public static function rows_from_result( array $res ) {
-		$rows = array();
-		$add  = function ( $q, $doc, $loc, $basis, $status, $cover ) use ( &$rows ) {
+		$rows    = array();
+		$hash_of = function ( $q ) {
+			return isset( $q['hash'] ) ? (string) $q['hash'] : '';
+		};
+		$add     = function ( $q, $doc, $loc, $basis, $status, $cover ) use ( &$rows ) {
 			$hash = isset( $q['hash'] ) ? (string) $q['hash'] : '';
 			$key  = ( '' !== $hash ? $hash : 'q' . (int) $q['i'] ) . '|' . $doc . '|' . (int) $loc . '|' . $basis;
 			if ( isset( $rows[ $key ] ) ) {
@@ -152,7 +155,14 @@ class AF_Graph {
 					} else {
 						$typed_status = 'unchecked';
 					}
-					$add( $q, $t['doc'], $loc, 'typed', $typed_status, null );
+					// A second opinion (optional, asked for by the site owner) can confirm by meaning what the words could not.
+						if ( in_array( $typed_status, array( 'not_found', 'translation' ), true ) && class_exists( 'AF_Semantic' ) ) {
+							$sem = AF_Semantic::lookup( (int) ( $res['post_id'] ?? 0 ), $hash_of( $q ), $t['doc'], $loc );
+							if ( $sem && 'agrees' === $sem['result'] ) {
+								$typed_status = 'semantic';
+							}
+						}
+						$add( $q, $t['doc'], $loc, 'typed', $typed_status, null );
 				}
 			}
 		}
@@ -386,7 +396,8 @@ class AF_Graph {
 		$sets = array(
 			''          => array( 'high', 'medium', 'cross_reference' ),
 			'high'      => array( 'high', 'cross_reference' ),
-			'weaker'    => array( 'high', 'medium', 'cross_reference', 'low', 'partial' ),
+			'weaker'    => array( 'high', 'medium', 'cross_reference', 'low', 'partial', 'semantic' ),
+			'semantic'  => array( 'semantic' ),
 			'cross_reference' => array( 'cross_reference' ),
 			'review'    => array( 'conflict', 'ambiguous' ),
 			'conflict'  => array( 'conflict' ),
@@ -436,6 +447,16 @@ class AF_Graph {
 						break;
 					}
 				}
+			}
+			// What the second opinion said about each edge it was asked about.
+			if ( class_exists( 'AF_Semantic' ) ) {
+				foreach ( $edges as &$e ) {
+					$rec = AF_Semantic::lookup( (int) $k['post_id'], (string) $k['quote_hash'], $e['doc'], (int) $e['loc_num'] );
+					if ( $rec ) {
+						$e['second'] = AF_Semantic::summary( $rec );
+					}
+				}
+				unset( $e );
 			}
 			$post  = get_post( (int) $k['post_id'] );
 			$out[] = array(

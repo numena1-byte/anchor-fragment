@@ -250,6 +250,75 @@ class AF_Rest {
 				},
 			)
 		);
+		register_rest_route(
+			'anchorfrag/v1',
+			'/semantic/settings',
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( __CLASS__, 'handle_semantic_settings' ),
+					'permission_callback' => function () {
+						return current_user_can( 'manage_options' );
+					},
+				),
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( __CLASS__, 'handle_semantic_settings' ),
+					'permission_callback' => function () {
+						return current_user_can( 'manage_options' );
+					},
+				),
+			)
+		);
+		register_rest_route(
+			'anchorfrag/v1',
+			'/semantic/test',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'handle_semantic_test' ),
+				'permission_callback' => function () {
+					return current_user_can( 'manage_options' );
+				},
+			)
+		);
+		register_rest_route(
+			'anchorfrag/v1',
+			'/semantic/step',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'handle_semantic_step' ),
+				'permission_callback' => function () {
+					return current_user_can( 'manage_options' );
+				},
+			)
+		);
+	}
+
+	public static function handle_semantic_settings( WP_REST_Request $req ) {
+		if ( 'POST' === $req->get_method() ) {
+			$saved = AF_Semantic::save_settings( (string) $req['url'], null === $req['key'] ? null : (string) $req['key'] );
+			if ( is_wp_error( $saved ) ) {
+				return $saved;
+			}
+		}
+		return rest_ensure_response( AF_Semantic::settings() );
+	}
+
+	public static function handle_semantic_test() {
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( 60 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		}
+		$res = AF_Semantic::ping();
+		return is_wp_error( $res ) ? $res : rest_ensure_response( $res );
+	}
+
+	public static function handle_semantic_step( WP_REST_Request $req ) {
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		}
+		AF_Graph::maybe_install();
+		$res = AF_Semantic::step( (int) $req['after'], (bool) $req['force'], 20.0 );
+		return is_wp_error( $res ) ? $res : rest_ensure_response( $res );
 	}
 
 	public static function handle_graph_rebuild( WP_REST_Request $req ) {
@@ -461,6 +530,9 @@ class AF_Rest {
 			'confirm' => rest_url( 'anchorfrag/v1/graph/confirm' ),
 			'xstep'   => rest_url( 'anchorfrag/v1/xref/step' ),
 			'xexplain' => rest_url( 'anchorfrag/v1/xref/explain' ),
+			'sem'      => rest_url( 'anchorfrag/v1/semantic/settings' ),
+			'semtest'  => rest_url( 'anchorfrag/v1/semantic/test' ),
+			'semstep'  => rest_url( 'anchorfrag/v1/semantic/step' ),
 			'nonce' => wp_create_nonce( 'wp_rest' ),
 		);
 		?>
@@ -590,7 +662,7 @@ class AF_Rest {
 				<?php endforeach; ?>
 				</select>
 				Paragraph <input type="text" name="locator" size="6">
-				Confidence <select name="status"><option value="">high + medium</option><option value="high">high only</option><option value="weaker">+ low, partial</option><option value="review">conflict + ambiguous</option><option value="conflict">conflict only</option><option value="ambiguous">ambiguous only</option><option value="cross_reference">cross-references (the Catechism quotes the source)</option><option value="fix">to fix (conflict + check wording or number)</option><option value="not_found">typed, check wording or paragraph number</option><option value="mention">typed, mentioned near the quotation (not its cite)</option><option value="translation">typed, in a translation post</option><option value="no_index">typed, document has no index</option><option value="unchecked">typed, any not checked</option><option value="all">everything</option></select>
+				Confidence <select name="status"><option value="">high + medium</option><option value="high">high only</option><option value="weaker">+ low, partial</option><option value="review">conflict + ambiguous</option><option value="conflict">conflict only</option><option value="ambiguous">ambiguous only</option><option value="cross_reference">cross-references (the Catechism quotes the source)</option><option value="fix">to fix (conflict + check wording or number)</option><option value="not_found">typed, check wording or paragraph number</option><option value="mention">typed, mentioned near the quotation (not its cite)</option><option value="translation">typed, in a translation post</option><option value="semantic">typed, confirmed by meaning (second opinion)</option><option value="no_index">typed, document has no index</option><option value="unchecked">typed, any not checked</option><option value="all">everything</option></select>
 				<button class="button" type="submit">Show</button>
 			</form>
 			<div id="af-graph-out" style="margin-top:1em;max-width:70em"></div>
@@ -598,11 +670,24 @@ class AF_Rest {
 			<h3>Review citations</h3>
 			<p>Each entry is one quotation. For a conflict, the author typed one paragraph and the words matched another: mark which is right. Decisions are kept when posts are matched again, and wrong edges leave every report.</p>
 			<form id="af-review-form">
-				<select name="status"><option value="review">conflict + ambiguous</option><option value="conflict">conflict only</option><option value="ambiguous">ambiguous only</option><option value="fix">to fix (conflict + check wording or number)</option><option value="not_found">typed, check wording or paragraph number</option><option value="mention">typed, mentioned near the quotation (not its cite)</option><option value="translation">typed, in a translation post</option><option value="no_index">typed, document has no index</option><option value="unchecked">typed, any not checked</option></select>
+				<select name="status"><option value="review">conflict + ambiguous</option><option value="conflict">conflict only</option><option value="ambiguous">ambiguous only</option><option value="fix">to fix (conflict + check wording or number)</option><option value="not_found">typed, check wording or paragraph number</option><option value="mention">typed, mentioned near the quotation (not its cite)</option><option value="translation">typed, in a translation post</option><option value="semantic">typed, confirmed by meaning (second opinion)</option><option value="no_index">typed, document has no index</option><option value="unchecked">typed, any not checked</option></select>
 				<label><input type="checkbox" name="reviewed"> include ones already reviewed</label>
 				<button class="button" type="submit">Load</button>
 			</form>
 			<div id="af-review-out" style="margin-top:1em;max-width:70em"></div>
+
+			<h3>Second opinion (optional)</h3>
+			<p>When an author cites a paragraph and the quoted words are not in it, the cause is either a wrong cite or a faithful translation, and comparing words cannot tell which. A second-opinion service compares meaning. Nothing is sent anywhere until you enter a service here and press the button. Only the quotation, the cited document and the paragraph number are sent, one citation at a time. An answer that confirms the meaning marks the citation "confirmed by meaning". It never counts as an exact match.</p>
+			<form id="af-sem-form">
+				Address <input type="url" name="url" size="48" placeholder="https://your-service.example/" aria-label="Service address">
+				Key <input type="password" name="key" size="20" autocomplete="off" aria-label="Key">
+				<button class="button" type="submit">Save</button>
+				<button class="button" type="button" id="af-sem-test">Test the connection</button>
+				<span id="af-sem-msg" style="margin-left:1em"></span>
+			</form>
+			<p><button class="button button-primary" id="af-sem-run">Ask about the citations the words could not confirm</button>
+			<label><input type="checkbox" id="af-sem-force"> ask again about ones already answered</label>
+			<span id="af-sem-run-msg" style="margin-left:1em"></span></p>
 
 			<h3>Catechism footnotes (probe)</h3>
 			<p>The Catechism's footnotes name the documents each paragraph quotes ("LG 1; cf. Mk 16:15"). A quotation of Lumen Gentium 1 can match Catechism 748 as well, so an author who cites one while the words match the other is not wrong. This reads the footnotes (about 130 pages from vatican.va, a few minutes; only the citations are kept, none of the text), then checks the recorded conflicts against them.</p>
@@ -886,6 +971,7 @@ class AF_Rest {
 					clr.addEventListener('click', function () { decide(row, e, null, sibs); });
 					row.appendChild(label); row.appendChild(link); row.appendChild(el('span', ' (' + e.status + cov + ') ', 'color:#50575e'));
 					row.appendChild(yes); row.appendChild(no); row.appendChild(clr); row.appendChild(state);
+					if (e.second) { row.appendChild(el('div', 'Second opinion: ' + e.second, 'color:#50575e;margin:2px 0 4px 7em;font-size:12px')); }
 					e.paint();
 					box.appendChild(row);
 				});
@@ -913,6 +999,62 @@ class AF_Rest {
 					.catch(function (err) { rout.textContent = 'Request failed (' + err + ').'; });
 			}
 			rform.addEventListener('submit', function (e) { e.preventDefault(); loadReview(false); });
+
+			/* ---- second opinion ---- */
+			var sform = document.getElementById('af-sem-form');
+			var smsg = document.getElementById('af-sem-msg');
+			var srun = document.getElementById('af-sem-run');
+			var srunmsg = document.getElementById('af-sem-run-msg');
+			function semFetch(url, method, body) {
+				var o = { method: method, headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' };
+				if (body) { o.body = body; }
+				return fetch(url, o).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); });
+			}
+			function semLoad() {
+				semFetch(cfg.sem, 'GET').then(function (res) {
+					if (!res.ok) { return; }
+					sform.url.value = res.body.url || '';
+					sform.key.placeholder = res.body.key_set ? '(saved)' : '';
+					srun.disabled = !(res.body.url && res.body.key_set);
+				});
+			}
+			sform.addEventListener('submit', function (e) {
+				e.preventDefault();
+				var body = new URLSearchParams({ url: sform.url.value.trim() });
+				if (sform.key.value) { body.set('key', sform.key.value); }
+				semFetch(cfg.sem, 'POST', body).then(function (res) {
+					smsg.textContent = res.ok ? (res.body.url ? 'Saved.' : 'Turned off.') : (res.body.message || 'Failed.');
+					sform.key.value = '';
+					semLoad();
+				}).catch(function (err) { smsg.textContent = 'Request failed (' + err + ').'; });
+			});
+			document.getElementById('af-sem-test').addEventListener('click', function () {
+				smsg.textContent = 'Testing…';
+				semFetch(cfg.semtest, 'POST').then(function (res) {
+					if (!res.ok) { smsg.textContent = res.body.message || 'The test failed.'; return; }
+					var m = res.body.models || {};
+					smsg.textContent = 'Connected' + (Object.keys(m).length ? ' (' + Object.keys(m).map(function (k) { return k + ': ' + m[k]; }).join(', ') + ')' : '') + '.';
+				}).catch(function (err) { smsg.textContent = 'Request failed (' + err + ').'; });
+			});
+			srun.addEventListener('click', function () {
+				var tot = { processed: 0, agrees: 0, disagrees: 0, inconclusive: 0, skipped: 0, errors: [] };
+				var force = document.getElementById('af-sem-force').checked;
+				srun.disabled = true;
+				function step(after) {
+					semFetch(cfg.semstep + '?after=' + after + (force ? '&force=1' : ''), 'POST').then(function (res) {
+						var b = res.body;
+						if (!res.ok) { srunmsg.textContent = 'Stopped: ' + (b.message || 'request failed') + ' Press the button to carry on.'; srun.disabled = false; return; }
+						['processed', 'agrees', 'disagrees', 'inconclusive', 'skipped'].forEach(function (k) { tot[k] += b[k]; });
+						tot.errors = tot.errors.concat(b.errors);
+						srunmsg.textContent = 'Asked about ' + tot.processed + ': ' + tot.agrees + ' agree, ' + tot.disagrees + ' disagree, ' + tot.inconclusive + ' unclear; ' + tot.skipped + ' not asked; ' + b.remaining + ' left' + (tot.errors.length ? '. Problems: ' + tot.errors.slice(0, 3).join('; ') : '') + '.';
+						if (b.errors.length && !b.processed) { srun.disabled = false; return; }
+						if (b.done) { srunmsg.textContent += ' Finished.'; srun.disabled = false; showGraph(); return; }
+						step(b.last);
+					}).catch(function (err) { srunmsg.textContent = 'Request failed (' + err + '). Press the button to carry on.'; srun.disabled = false; });
+				}
+				step(0);
+			});
+			semLoad();
 
 			/* ---- match posts ---- */
 			var mform = document.getElementById('af-match-form');

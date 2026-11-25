@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Anchor Fragment (prototype)
  * Description: Prototype. Fetches Vatican documents on the server, builds browser text-fragment links to numbered paragraphs, and matches quotations in posts to their source paragraph. No front-end output.
- * Version: 0.12.2
+ * Version: 0.13.0
  * Requires PHP: 7.4
  * Author: WPI
  * License: GPL-2.0-or-later
@@ -10,7 +10,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'AF_VERSION', '0.12.2' );
+define( 'AF_VERSION', '0.13.0' );
 define( 'AF_DIR', plugin_dir_path( __FILE__ ) );
 
 require_once AF_DIR . 'includes/class-af-parser.php';
@@ -19,6 +19,7 @@ require_once AF_DIR . 'includes/class-af-matcher.php';
 require_once AF_DIR . 'includes/class-af-analyzer.php';
 require_once AF_DIR . 'includes/class-af-quote.php';
 require_once AF_DIR . 'includes/class-af-graph.php';
+require_once AF_DIR . 'includes/class-af-semantic.php';
 require_once AF_DIR . 'includes/class-af-xref.php';
 require_once AF_DIR . 'includes/class-af-links.php';
 require_once AF_DIR . 'includes/class-af-service.php';
