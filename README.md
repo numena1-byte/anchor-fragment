@@ -37,3 +37,7 @@ Humanae vitae, Evangelium vitae and Donum veritatis print a signature line and t
 ## 0.14.0
 
 A new screen, Tools > Citations to fix, lists the quotations whose cite and words disagree (or whose cite could not be found, or whose words fit several paragraphs). One card per quotation, grouped by post: what you cited, where the words are, a plain-words diagnosis (next to the cited paragraph, same document, another document), links to both paragraphs on vatican.va, a side-by-side comparison of the two paragraphs with the quoted words highlighted, and a link to edit the post. Nothing in a post is changed. For each card you can record "my cite is right", "the cite needs fixing" or "ignore"; the card leaves the to-do list and the choice can be undone. A decision survives matching the post again. Filters: kind, to do / decided, document, words in the title. "Download these as CSV" saves the list.
+
+## 0.14.1
+
+A cite that starts the sentence right after a quotation and is its subject ("... Catechism 1735 concerns freedom and culpability") is now a mention of that paragraph, not the quotation's source. Before, it was attached to the quotation just ended, so a footnote quoted from a pope's text (which merely names the Catechism paragraph) showed up as "cited Catechism 1735, not found". Cites in brackets or ending the sentence after the quotation are unaffected.

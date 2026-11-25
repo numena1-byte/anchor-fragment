@@ -216,7 +216,13 @@ class AF_Analyzer {
 			$attached = array();
 			if ( ! $has_own ) {
 				$lead_sent = preg_split( '/(?<=[.!?])\s+(?=[\p{Lu}\x{201C}"(])/u', trim( $q['lead'] ) );
-				$nearby    = trim( ( $lead_sent ? end( $lead_sent ) : '' ) . ' | ' . mb_substr( ltrim( $q['after'], " \t\n\x{201D}\x{2019}\"'" ), 0, 60 ) );
+				$aft       = mb_substr( ltrim( $q['after'], " \t\n\x{201D}\x{2019}\"'" ), 0, 60 );
+				// "...” Catechism 1735 concerns freedom": the cite starts the next sentence and is its subject, so the post is
+				// talking about that paragraph, not citing it as the source of the quotation just ended.
+				if ( preg_match( '/^[\s(\[\x{2014}\x{2013}-]*\p{Lu}[^.;:()\[\]]{0,60}?\d+[a-z]?(?:\s*[-\x{2013},]\s*\d+)*\s+\p{Ll}/u', $aft ) ) {
+					$aft = '';
+				}
+				$nearby    = trim( ( $lead_sent ? end( $lead_sent ) : '' ) . ' | ' . $aft );
 				foreach ( $this->cites( $nearby ) as $c ) {
 					$attached[ $c['doc'] . '|' . implode( ',', (array) $c['loc'] ) ] = true;
 				}

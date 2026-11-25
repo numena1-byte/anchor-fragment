@@ -400,6 +400,14 @@ check( '17h the name just before settles it, as a firm cite', 'high' === $q[0]['
 $q = run1( $an_sh, $get_sh, '<p>As it says, “' . $doc_a[3] . '” (TD 2).</p>' );
 check( '17i shared short, words in neither cited paragraph -> not a conflict with a guess', 'conflict' !== $q[0]['status'] || ! empty( $q[0]['typed'] ), json_encode( $q[0] ) );
 
+// 17j. 0.14.1: a cite that starts the next sentence as its subject ("Catechism 1735 concerns ...") is a mention, not the quotation's source.
+$q = run1( $an, $get, '<p>The footnote says, “' . $bread . '” TD 4 concerns freedom and culpability. It says:</p>' );
+check( '17j a cite that is the subject of the next sentence is not attached', ! empty( $q[0]['typed'] ) && false === $q[0]['typed'][0]['attached'], json_encode( $q[0] ) );
+$q = run1( $an, $get, '<p>The footnote says, “' . $bread . '” TD 4. It concerns freedom.</p>' );
+check( '17k a cite that ends the sentence after the quotation is attached', ! empty( $q[0]['typed'] ) && true === $q[0]['typed'][0]['attached'], json_encode( $q[0] ) );
+$q = run1( $an, $get, '<p>The footnote says, “' . $bread . '” (TD 4) and goes on.</p>' );
+check( '17l a bracketed cite is attached', ! empty( $q[0]['typed'] ) && true === $q[0]['typed'][0]['attached'], json_encode( $q[0] ) );
+
 // Quotations inserted by the plugin carry the paragraph they are meant to be.
 $tdp4 = $doc_a[3];
 $mk   = function ( $doc, $loc, $text ) { return '<blockquote class="af-quote" data-af-doc="' . $doc . '" data-af-locator="' . $loc . '"><p>' . $text . '</p><footer class="af-quote__source">&mdash; <cite><a href="https://x.example/">Some Title, no. ' . $loc . '</a></cite></footer></blockquote>'; };
