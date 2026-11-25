@@ -49,6 +49,11 @@ class AF_Service {
 			'catechism'  => array( 'title' => 'Catechism', 'short' => 'CCC', 'url' => 'https://www.vatican.va/ccc/index.html', 'multipage' => true ),
 		);
 	}
+	public static $passage_fails = false;
+	public static function passage( $id, $loc ) {
+		if ( self::$passage_fails ) { return new WP_Error( 'af_http', 'vatican.va answered HTTP 503' ); }
+		return array( 'doc' => $id, 'locator' => $loc, 'text' => 'The text of paragraph ' . $loc . ' of the Catechism.' );
+	}
 	public static function analyze_post( $id, $caps = true ) {
 		self::$analysed[] = $id;
 		$res = $GLOBALS['opts'][ 'af_match_' . $id ];
@@ -71,11 +76,15 @@ function ans( $rank, $score, $lead, $judge, $better = null ) {
 echo "The rule\n";
 check( 'first, close, ahead, faithful: agrees', 'agrees' === AF_Semantic::classify( ans( 1, 812, 120, 'faithful_translation' ) )['result'] );
 check( 'a model that says loose paraphrase is not enough', 'inconclusive' === AF_Semantic::classify( ans( 1, 812, 120, 'loose_paraphrase' ) )['result'] );
-check( 'too close to the next paragraph is not enough', 'inconclusive' === AF_Semantic::classify( ans( 1, 812, 10, 'faithful_translation' ) )['result'] );
-check( 'a score under the line is not enough', 'inconclusive' === AF_Semantic::classify( ans( 1, 600, 120, 'faithful_translation' ) )['result'] );
+check( 'a small lead over the next paragraph no longer stops an agreement (0.13.1)', 'agrees' === AF_Semantic::classify( ans( 1, 812, 10, 'faithful_translation' ) )['result'] );
+check( 'a faithful reading at 56% agrees (a quotation that is one sentence of a paragraph)', 'agrees' === AF_Semantic::classify( ans( 1, 560, 5, 'faithful_translation' ) )['result'] );
+check( 'a faithful reading under 50% is only unclear', 'inconclusive' === AF_Semantic::classify( ans( 1, 480, 120, 'faithful_translation' ) )['result'] );
 check( 'no model reading never agrees', 'inconclusive' === AF_Semantic::classify( ans( 1, 900, 200, '' ) )['result'] );
-check( 'another paragraph closer: disagrees', 'disagrees' === AF_Semantic::classify( ans( 2, 700, 50, 'faithful_translation', '18' ) )['result'] );
-check( 'related but different: disagrees', 'disagrees' === AF_Semantic::classify( ans( 1, 800, 100, 'related_but_different' ) )['result'] );
+check( 'faithful at a lower rank still agrees when the paragraph is close enough (short quotations rank badly)', 'agrees' === AF_Semantic::classify( ans( 4, 560, 0, 'faithful_translation', '92' ) )['result'] );
+check( 'another paragraph closer and no faithful reading: disagrees', 'disagrees' === AF_Semantic::classify( ans( 2, 400, 50, 'loose_paraphrase', '18' ) )['result'] );
+check( 'related but different at 60%: disagrees', 'disagrees' === AF_Semantic::classify( ans( 1, 600, 100, 'related_but_different' ) )['result'] );
+check( 'related but different yet first at 82%: unclear, it may be another translation', 'inconclusive' === AF_Semantic::classify( ans( 1, 820, 100, 'related_but_different' ) )['result'] );
+check( 'unrelated is a disagreement even when close', 'disagrees' === AF_Semantic::classify( ans( 1, 800, 100, 'unrelated' ) )['result'] );
 check( 'far from the paragraph: disagrees', 'disagrees' === AF_Semantic::classify( ans( 1, 300, 100, '' ) )['result'] );
 check( 'an error answer is an error', 'error' === AF_Semantic::classify( array( 'ok' => false, 'error' => 'boom' ) )['result'] );
 check( 'an answer with no ranking is an error', 'error' === AF_Semantic::classify( array( 'ok' => true, 'signals' => array() ) )['result'] );
@@ -107,6 +116,13 @@ check( 'a disagreeing answer leaves it not_found', 'not_found' === array_values(
 $GLOBALS['opts']['af_sem_1']['hnf1|dei-verbum|17']['rule'] = 0;
 AF_Semantic::save( 1, $hash, 'dei-verbum', 17, array( 'result' => 'agrees' ) );
 $GLOBALS['opts']['af_sem_1']['hnf1|dei-verbum|17']['rule'] = 0;
+$GLOBALS['opts']['af_sem_1']['hnf1|dei-verbum|17']['rule'] = 1;
+$GLOBALS['opts']['af_sem_1']['hnf1|dei-verbum|17'] += array( 'rank' => 4, 'score' => 560, 'lead' => 0, 'judge' => 'faithful_translation', 'result' => 'disagrees' );
+$rc = AF_Semantic::lookup( 1, $hash, 'dei-verbum', 17 );
+check( 'an answer made under the first rule is read again under the current one, not asked again', is_array( $rc ) && 'agrees' === $rc['result'], json_encode( $rc ) );
+$GLOBALS['opts']['af_sem_1']['hnf1|dei-verbum|17']['result'] = 'skipped';
+check( 'a first-rule "not asked" is asked again', null === AF_Semantic::lookup( 1, $hash, 'dei-verbum', 17 ) );
+$GLOBALS['opts']['af_sem_1']['hnf1|dei-verbum|17']['rule'] = 0;
 check( 'an answer made under an older rule counts as none', null === AF_Semantic::lookup( 1, $hash, 'dei-verbum', 17 ) && 'not_found' === array_values( AF_Graph::rows_from_result( $resA ) )[0]['status'] );
 AF_Semantic::save( 1, $hash, 'dei-verbum', 17, array( 'result' => 'agrees' ) );
 $resT = array( 'post_id' => 1, 'translation' => true, 'quotes' => $resA['quotes'] );
@@ -128,16 +144,17 @@ AF_Graph::record_post( 1, $GLOBALS['opts']['af_match_1'] );
 check( 'three not_found edges to start with', 3 === (int) $wpdb->get_var( "SELECT COUNT(*) FROM wp_af_citations WHERE post_id = 1 AND status = 'not_found'" ) );
 
 $sent = array();
-$answers = array( 'First' => ans( 1, 812, 120, 'faithful_translation' ), 'Words' => ans( 2, 700, 40, 'faithful_translation', '19' ) );
+$answers = array( 'First' => ans( 1, 812, 120, 'faithful_translation' ), 'Words' => ans( 2, 400, 40, 'related_but_different', '19' ) );
 AF_Semantic::$transport = function ( $url, $key, $payload ) use ( &$sent, $answers ) {
 	$sent[] = $payload;
 	return strpos( $payload['quote'], 'First' ) === 0 ? $answers['First'] : $answers['Words'];
 };
 $o = AF_Semantic::step( 0, false, 20.0 );
-check( 'two answered, the multi-page document not asked', 2 === $o['processed'] && 1 === $o['skipped'] && $o['done'], json_encode( $o ) );
-check( 'one agreed and one disagreed', 1 === $o['agrees'] && 1 === $o['disagrees'], json_encode( $o ) );
+check( 'all three asked, the multi-page document too (0.13.1)', 3 === $o['processed'] && 0 === $o['skipped'] && $o['done'], json_encode( $o ) );
+check( 'one agreed and two disagreed', 1 === $o['agrees'] && 2 === $o['disagrees'], json_encode( $o ) );
+check( 'a multi-page document is sent with the text of the cited paragraph', 'The text of paragraph 2349 of the Catechism.' === $sent[2]['passage'] && ! isset( $sent[0]['passage'] ), json_encode( $sent[2] ) );
 check( 'the post whose words were not kept was matched again', array( 1 ) === AF_Service::$analysed );
-check( 'the request holds only the quotation, document and paragraph', 'First quotation words that nothing matched.' === $sent[0]['quote'] && '17' === $sent[0]['locator'] && 'dei-verbum' === $sent[0]['document']['id'] && 'https://www.vatican.va/dv.html' === $sent[0]['document']['url'] && 1 === $sent[0]['version'] && array( 'version', 'quote', 'document', 'locator', 'language' ) === array_keys( $sent[0] ), json_encode( $sent[0] ) );
+check( 'the request holds only the quotation, document and paragraph', 'First quotation words that nothing matched.' === $sent[0]['quote'] && '17' === $sent[0]['locator'] && 'dei-verbum' === $sent[0]['document']['id'] && 'https://www.vatican.va/dv.html' === $sent[0]['document']['url'] && 2 === $sent[0]['version'] && array( 'version', 'quote', 'document', 'locator', 'language' ) === array_keys( $sent[0] ), json_encode( $sent[0] ) );
 check( 'the agreeing citation is now semantic in the graph', 'semantic' === $wpdb->get_var( "SELECT status FROM wp_af_citations WHERE post_id = 1 AND loc_num = 17" ) );
 check( 'the disagreeing one stays not_found', 'not_found' === $wpdb->get_var( "SELECT status FROM wp_af_citations WHERE post_id = 1 AND loc_num = 18" ) );
 check( 'the method entry for the record', array( 'name' => 'semantic', 'result' => 'agrees', 'score' => 812, 'model' => 'bge-m3' ) === AF_Semantic::method_entry( AF_Semantic::lookup( 1, 'ha', 'dei-verbum', 17 ) ) );
@@ -146,14 +163,33 @@ $sent = array();
 $o = AF_Semantic::step( 0, false, 20.0 );
 check( 'asking again sends nothing', 0 === count( $sent ) && 0 === $o['processed'], json_encode( $o ) );
 $o = AF_Semantic::step( 0, true, 20.0 );
-check( 'force asks again, including the confirmed one', 2 === count( $sent ), (string) count( $sent ) );
+check( 'force asks again, including the confirmed one', 3 === count( $sent ), (string) count( $sent ) );
 
 // The review list shows what was said.
 $rv = AF_Graph::review( array( 'status' => AF_Graph::status_set( 'not_found' ), 'confirmed' => 'unreviewed' ), 0, 20 );
 $text = json_encode( $rv );
-check( 'the review list carries the second opinion', false !== strpos( $text, 'disagrees' ) && false !== strpos( $text, 'closer: 19' ), $text );
+check( 'the review list carries the second opinion', false !== strpos( $text, 'disagrees' ) && false !== strpos( $text, 'closer: 19' ) && false !== strpos( $text, 'closer: 19' ), $text );
 $rv = AF_Graph::review( array( 'status' => AF_Graph::status_set( 'semantic' ), 'confirmed' => 'unreviewed' ), 0, 20 );
 check( 'the confirmed ones can be listed', 1 === $rv['total'] && false !== strpos( json_encode( $rv ), 'agrees' ), json_encode( $rv ) );
+
+// 0.13.1: words found in another document, a quotation too short to send, and a paragraph that cannot be read are not asked.
+$GLOBALS['opts']['af_match_3'] = array( 'post_id' => 3, 'quotes' => array(
+	array_merge( nf( 0, 'hx', 'These words are in a document the registry does not hold.', 'dei-verbum', 17, 'out_of_scope' ), array( 'note' => 'https://www.vatican.va/x/donum-veritatis.html' ) ),
+	nf( 1, 'hy', 'Too short.', 'dei-verbum', 18, 'too_short' ),
+	nf( 2, 'hw', 'A quotation of a Catechism paragraph that cannot be fetched now.', 'catechism', 56 ),
+) );
+AF_Graph::record_post( 3, $GLOBALS['opts']['af_match_3'] );
+$sent = array();
+AF_Semantic::$transport = function ( $url, $key, $payload ) use ( &$sent ) { $sent[] = $payload; return ans( 1, 800, 100, 'faithful_translation' ); };
+AF_Service::$passage_fails = true;
+$o = AF_Semantic::step( 0, false, 20.0 );
+check( 'nothing is sent for the out-of-scope, the too-short or the unreadable paragraph', 0 === count( $sent ), json_encode( $sent ) );
+check( 'two are skipped with their reasons, the unreadable one is reported', 2 === $o['skipped'] && 1 === count( $o['errors'] ) && false !== strpos( $o['errors'][0], 'could not be read' ), json_encode( $o ) );
+check( 'the reason for words found elsewhere names the other document', false !== strpos( AF_Semantic::summary( AF_Semantic::lookup( 3, 'hx', 'dei-verbum', 17 ) ), 'found in another document (https://www.vatican.va/x/donum-veritatis.html)' ), AF_Semantic::summary( AF_Semantic::lookup( 3, 'hx', 'dei-verbum', 17 ) ) );
+check( 'the short one says why', false !== strpos( AF_Semantic::summary( AF_Semantic::lookup( 3, 'hy', 'dei-verbum', 18 ) ), 'too short' ) );
+AF_Service::$passage_fails = false;
+$o = AF_Semantic::step( 0, false, 20.0 );
+check( 'the unreadable one is asked once it can be read', 1 === $o['processed'] && 'The text of paragraph 56 of the Catechism.' === $sent[0]['passage'], json_encode( $o ) );
 
 // A service that is down stops the run and keeps the rest for later.
 $GLOBALS['opts']['af_match_2'] = array( 'post_id' => 2, 'quotes' => array( nf( 0, 'hz', 'Second post words nothing matched.', 'dei-verbum', 5 ) ) );

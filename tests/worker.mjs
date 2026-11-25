@@ -48,5 +48,16 @@ judgeSays = 'not json at all';
 r = await call({ version: 1, quote: 'Sacred Tradition and Sacred Scripture are bound closely together and communicate one with the other', document: doc, locator: '2' });
 check('a model answer that cannot be read gives an empty reading, which never agrees', r.j.ok && r.j.signals.judge === '', JSON.stringify(r.j));
 
+// A document that spans many pages: the plugin sends the cited paragraph, nothing is fetched, nothing is ranked.
+judgeSays = { verdict: 'faithful_translation', reason: 'same meaning' };
+const before2 = fetched;
+r = await call({ version: 2, quote: 'Sacred Tradition and Sacred Scripture are bound closely together and communicate one with the other', document: { ...doc, url: 'https://www.vatican.va/archive/ENG0015/_INDEX.HTM' }, locator: '2349', passage: PARAS[1] });
+const passScore = r.j.signals.score;
+check('passage mode compares the two texts, reads nothing and does not rank', r.j.ok && r.j.signals.rank === 0 && r.j.signals.score > 500 && r.j.signals.judge === 'faithful_translation' && fetched === before2, JSON.stringify(r.j));
+r = await call({ version: 2, quote: 'Sacred Tradition and Sacred Scripture are bound closely together and communicate one with the other', document: doc, locator: '2349', passage: PARAS[3] });
+check('passage mode with another paragraph scores lower', r.j.ok && r.j.signals.score < passScore, JSON.stringify(r.j));
+r = await call({ version: 2, quote: 'short', document: doc, locator: '1', passage: PARAS[1] });
+check('passage mode still refuses a very short quotation', r.j.ok === false);
+
 console.log(fail ? `\n${fail} FAILED` : '\nAll passed');
 process.exit(fail ? 1 : 0);

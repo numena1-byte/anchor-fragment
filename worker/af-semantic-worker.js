@@ -7,6 +7,8 @@
 // Request  POST, JSON, header x-key: <KEY>
 //   { "version": 1, "quote": "...", "document": { "id", "title", "short", "url" }, "locator": "25", "language": "en" }
 //   { "version": 1, "ping": true }
+//   Add "passage": "<text of the cited paragraph>" for a document that spans many pages (the Catechism): the Worker then
+//   reads nothing, compares the quotation with that text alone and answers with rank 0 (not ranked among the others).
 // Answer
 //   { "version": 1, "ok": true, "signals": { "rank", "score", "lead", "judge", "reason", "better" }, "models": { ... } }
 //   { "version": 1, "ok": false, "error": "..." }
@@ -95,7 +97,7 @@ async function loadDoc(env, url) {
 async function judge(env, model, quote, para) {
   const r = await env.AI.run(model, {
     messages: [
-      { role: 'system', content: 'You compare a quotation from a blog post to one numbered paragraph of a Church document. The blogger may have translated the original Latin himself, so the wording can differ a lot from the official English even when the meaning is the same. If the quotation says the opposite of the paragraph, or credits it with something it does not say, it is not a faithful translation. Reply with one line of JSON only: {"verdict":"faithful_translation|loose_paraphrase|related_but_different|unrelated","reason":"at most 15 words"}.' },
+      { role: 'system', content: 'You compare a quotation from a blog post to one numbered paragraph of a Church document. The blogger may have translated the original himself or used another published English translation, so the wording can differ a lot from the official English even when the meaning and the sentence structure are the same; different words for the same statement are still a faithful translation. If the quotation says the opposite of the paragraph, or credits it with something it does not say, it is not a faithful translation. Reply with one line of JSON only: {"verdict":"faithful_translation|loose_paraphrase|related_but_different|unrelated","reason":"at most 15 words"}.' },
       { role: 'user', content: `QUOTATION:\n${quote}\n\nPARAGRAPH:\n${para}` },
     ],
     max_tokens: 80,
@@ -114,6 +116,18 @@ async function check(env, body) {
   const doc = body.document || {};
   const loc = parseInt(body.locator, 10);
   if (quote.length < 20 || quote.length > MAX_QUOTE) return reply({ ok: false, error: 'the quotation must be 20 to ' + MAX_QUOTE + ' characters' });
+  if (typeof body.passage === 'string' && body.passage.trim()) {
+    // The plugin read the cited paragraph itself: nothing is fetched and nothing is ranked.
+    const passage = body.passage.replace(/\s+/g, ' ').trim().slice(0, 6000);
+    const [qv, pv] = await embed(env, [quote, passage.slice(0, 1800)]);
+    const model = env.JUDGE_MODEL || DEFAULT_JUDGE;
+    const j = await judge(env, model, quote, passage.length <= 1800 ? passage : passage.slice(0, 1800));
+    return reply({
+      ok: true,
+      signals: { rank: 0, score: Math.max(0, Math.min(1000, Math.round(cos(qv, pv) * 1000))), lead: 0, judge: String(j.verdict || ''), reason: String(j.reason || '').slice(0, 160), better: null },
+      models: { embedding: 'bge-m3', judge: modelName(model) },
+    });
+  }
   let host = '';
   try { const u = new URL(doc.url); host = u.protocol === 'https:' ? u.hostname : ''; } catch (e) { /* falls through */ }
   if (!(host === 'vatican.va' || host.endsWith('.vatican.va'))) return reply({ ok: false, error: 'only pages on vatican.va are read' });

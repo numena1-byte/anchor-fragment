@@ -224,6 +224,34 @@ class AF_Analyzer {
 			foreach ( $typed as $k => $t ) {
 				$typed[ $k ]['attached'] = $has_own || isset( $attached[ $t['doc'] . '|' . implode( ',', (array) $t['loc'] ) ] );
 			}
+			// A short code that two documents share ("DV" is Dei verbum and Donum veritatis): when the text just before names only
+			// one of them, that is the one; otherwise both stay in, as guesses that count only where the quotation's words agree.
+			$shared_named = null;
+			foreach ( $typed as $k => $t ) {
+				if ( empty( $t['ambig'] ) ) {
+					continue;
+				}
+				if ( null === $shared_named ) {
+					$shared_named = $this->docs_in( mb_substr( $q['lead'], -300 ) . ' ' . $q['cite'], false );
+				}
+				$cands = array();
+				foreach ( $this->docs as $cid => $cd ) {
+					if ( '' !== $cd['short'] && $cd['short'] === $this->docs[ $t['doc'] ]['short'] ) {
+						$cands[] = $cid;
+					}
+				}
+				$named = array_values( array_intersect( $cands, $shared_named ) );
+				if ( 1 === count( $named ) ) {
+					if ( $named[0] === $t['doc'] ) {
+						unset( $typed[ $k ]['ambig'] );
+					} else {
+						unset( $typed[ $k ] );
+					}
+				} else {
+					$typed[ $k ]['soft'] = true;
+				}
+			}
+			$typed = array_values( $typed );
 			// The cite after the next quotation in the same sentence may be meant for this one too: it counts only when the
 			// words agree.
 			if ( ! $has_own && ! empty( $q['shared'] ) ) {
@@ -257,7 +285,10 @@ class AF_Analyzer {
 					$typed[ $k ]['soft'] = true;
 				}
 			}
-			foreach ( $this->bare_cites( $has_own ? $q['cite'] : $q['cite'] . ' ' . $q['after'] ) as $loc ) {
+			// "(EV 56)" or "(HV 20)" right after the quotation, naming a work that is not in the registry: the number belongs to
+			// that work, so no number found in the text around it ("in paragraph 56 of the encyclical") is guessed for a document.
+			$foreign_cite = ! $has_own && $this->foreign_cite_after( $q['after'] );
+			foreach ( $foreign_cite ? array() : $this->bare_cites( $has_own ? $q['cite'] : $q['cite'] . ' ' . $q['after'] ) as $loc ) {
 				$doc = null !== $lead_doc ? $lead_doc : $carry;
 				if ( null === $doc && 1 === count( $hints ) ) {
 					$doc = $hints[0];
@@ -272,13 +303,17 @@ class AF_Analyzer {
 			$head = mb_substr( $q['after'], 0, 100 );
 			// Each stretch of text is read on its own, so that a sentence cannot run from the text before the
 			// quotation into the text after it.
-			$marked = $has_own ? $this->marked_cites( $q['cite'] ) : array_merge( $this->marked_cites( $q['cite'] ), $this->marked_cites( $tail ), $this->marked_cites( $head ) );
+			$marked = $foreign_cite ? array() : ( $has_own ? $this->marked_cites( $q['cite'] ) : array_merge( $this->marked_cites( $q['cite'] ), $this->marked_cites( $tail ), $this->marked_cites( $head ) ) );
 			foreach ( $marked as $mc ) {
 				$doc = $mc['doc']; // Set when the cite names its document in the same sentence.
 				if ( null === $doc ) {
 					// "Familiaris Consortio, no. 84": a title and a comma just before the number means it belongs to that
 					// work, which is not in the registry, so it is not a number of the document carried on from earlier.
 					if ( preg_match( '/\p{Lu}[\p{L}\'\x{2019}-]+(?:\s+(?:\p{Lu}[\p{L}\'\x{2019}-]+|of|et|the|de|in|on|and))*\s+\p{Lu}[\p{L}\'\x{2019}-]+,\s*$/u', $mc['pre'] ) || preg_match( '/\bvol(?:ume)?\.?\s+[\p{L}\d]+,\s*$/iu', $mc['pre'] ) ) {
+						continue;
+					}
+					// "HV no. 20", "EV, 56": the short name of a work that is not in the registry, just before the number.
+					if ( preg_match( '/(?<![\p{L}\d])(\p{Lu}{2,6})\s*,?\s*$/u', $mc['pre'], $ab ) && ! $this->is_short( $ab[1] ) ) {
 						continue;
 					}
 					// The same number already read as a named cite ("Amoris Laetitia, no. 301").
@@ -488,7 +523,7 @@ class AF_Analyzer {
 				'hash'      => substr( sha1( AF_Parser::fold( $text ) ), 0, 16 ),
 				'excerpt'   => mb_substr( $text, 0, 110 ),
 				// The words of a quotation nothing matched, kept on this site only so that the optional second opinion can be asked later.
-				'text'      => 'no_match' === $status ? mb_substr( $text, 0, 3000 ) : '',
+				'text'      => in_array( $status, array( 'no_match', 'too_short', 'out_of_scope' ), true ) ? mb_substr( $text, 0, 3000 ) : '',
 				'words'     => $tokens,
 				'status'    => $status,
 				'best'      => $best ? array(
@@ -547,8 +582,33 @@ class AF_Analyzer {
 		return AF_Parser::clean( $s );
 	}
 
+	/** True when the text is the short code of a document in the registry. */
+	private function is_short( $code ) {
+		foreach ( $this->docs as $d ) {
+			if ( '' !== $d['short'] && 0 === strcasecmp( $d['short'], $code ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * A bracket right after the quotation that cites a work the registry does not hold: "(EV 56)", "(Humanae Vitae, 20)".
+	 * Cites of registered documents are read elsewhere, so only a bracket that names something else counts.
+	 */
+	private function foreign_cite_after( $after ) {
+		if ( ! preg_match( '/^[\s\x{201D}\x{2019}"\']*[(\[]\s*(?:cf\.?\s*)?((?:\p{Lu}{2,6}|\p{Lu}[\p{L}\'\x{2019}]+(?:\s+(?:of|et|the|de|in|on|and|\p{Lu}[\p{L}\'\x{2019}]+))*))\s*[,.]?\s*(?:nn?\.|nos?\.|\x{00A7}+|#|chap\.?\s*\d+\s*,)?\s*\d{1,4}(?:\s*[-\x{2013}\x{2014}]\s*\d{1,4})?\s*[)\]]/u', $after, $m ) ) {
+			return false;
+		}
+		$name = trim( $m[1] );
+		if ( $this->is_short( $name ) || $this->docs_in( $name ) ) {
+			return false;
+		}
+		return true;
+	}
+
 	/** Document ids whose title, alias or short code appears in the text. */
-	private function docs_in( $text ) {
+	private function docs_in( $text, $shorts = true ) {
 		$lite  = self::lite( $text );
 		$plain = self::straight( $text );
 		$found = array();
@@ -560,7 +620,7 @@ class AF_Analyzer {
 				}
 			}
 			// Short codes such as LS are matched only in capitals.
-			if ( ! isset( $found[ $id ] ) && '' !== $d['short'] && preg_match( '/\b' . preg_quote( $d['short'], '/' ) . '\b/u', $plain ) ) {
+			if ( $shorts && ! isset( $found[ $id ] ) && '' !== $d['short'] && preg_match( '/\b' . preg_quote( $d['short'], '/' ) . '\b/u', $plain ) ) {
 				$found[ $id ] = true;
 			}
 		}
@@ -604,14 +664,15 @@ class AF_Analyzer {
 		$num   = '(?:\s*[,.:]?\s*(?:nn?\.|nos?\.|no|n|\x{00A7}+|#|paras?\.?|paragraphs?)?\s*)(\d{1,4})(?!\d)(?!\s*(?:%|(?:times?|percent|per\s?cent|years?|pages?|words?|days?|months?|weeks?|paragraphs?|articles?|footnotes?|references?|occurrences?|instances?|mentions?|uses|people|million|billion|thousand|hundred)\b))(?:\s*[-\x{2013}\x{2014}]\s*(\d{1,4})(?!\d))?((?:\s*[;,]\s*(?:nn?\.|nos?\.|\x{00A7}+)?\s*\d{1,4}(?!\d)(?:\s*[-\x{2013}\x{2014}]\s*\d{1,4}(?!\d))?)*)';
 		$out   = array();
 		$docs  = $this->docs;
-		$add1  = function ( $doc, $a, $b ) use ( &$out, $docs ) {
+		$amb   = false; // Set while reading a short code that two documents share ("DV").
+		$add1  = function ( $doc, $a, $b ) use ( &$out, $docs, &$amb ) {
 			$a = (int) $a;
 			if ( $a < 1 || $a > $docs[ $doc ]['max'] ) {
 				return; // Not a paragraph number of this document, e.g. a year.
 			}
 			$b   = (int) $b;
 			$loc = ( $b > $a && $b - $a <= 12 ) ? range( $a, $b ) : array( $a );
-			$out[ $doc . ':' . implode( ',', $loc ) ] = array( 'doc' => $doc, 'loc' => $loc );
+			$out[ $doc . ':' . implode( ',', $loc ) ] = $amb ? array( 'doc' => $doc, 'loc' => $loc, 'ambig' => true ) : array( 'doc' => $doc, 'loc' => $loc );
 		};
 		$add   = function ( $doc, $m ) use ( $add1 ) {
 			$add1( $doc, $m[1], isset( $m[2] ) ? $m[2] : 0 );
@@ -622,11 +683,19 @@ class AF_Analyzer {
 				}
 			}
 		};
+		$count = array();
+		foreach ( $this->docs as $d ) {
+			if ( '' !== $d['short'] ) {
+				$count[ $d['short'] ] = ( $count[ $d['short'] ] ?? 0 ) + 1;
+			}
+		}
 		foreach ( $this->docs as $id => $d ) {
 			if ( '' !== $d['short'] && preg_match_all( '/\b' . preg_quote( $d['short'], '/' ) . '\b' . $num . '/u', $plain, $ms, PREG_SET_ORDER ) ) {
+				$amb = $count[ $d['short'] ] > 1;
 				foreach ( $ms as $m ) {
 					$add( $id, $m );
 				}
+				$amb = false;
 			}
 			foreach ( $d['aliases'] as $a ) {
 				if ( preg_match_all( '/\b' . preg_quote( $a, '/' ) . '\b[\'"]?' . $num . '/u', $lite, $ms, PREG_SET_ORDER ) ) {

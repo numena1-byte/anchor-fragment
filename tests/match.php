@@ -374,6 +374,32 @@ $q = run1( $an, $get, '<p>Earlier: Test Document 4. Then, as it says (Test Docum
 check( '17b a number read as a named cite is not read twice', 'high' === $q[0]['status'] && 1 === count( $q[0]['typed'] ), json_encode( $q[0]['typed'] ) );
 
 
+// 17c. 0.13.1: "(EV 56)" names a work that is not in the registry, so "paragraph 56" in the text before it is not read as a number of
+// a registered document named in the same sentence ("the original edition of the Test Document").
+$q = run1( $an, $get, '<p>In paragraph 3 of the encyclical, he quotes the teaching in the original edition of the Test Document: “' . $bread . '” (EV 3).</p>' );
+check( '17c "(EV 3)" keeps "paragraph 3" from becoming a Test Document cite', empty( $q[0]['typed'] ) && 'conflict' !== $q[0]['status'], json_encode( $q[0] ) );
+$q = run1( $an, $get, '<p>The Test Document is discussed. HV no. 3 puts it: “' . $bread . '”</p>' );
+check( '17d "HV no. 3" is the number of another work', empty( $q[0]['typed'] ) && 'conflict' !== $q[0]['status'], json_encode( $q[0] ) );
+$q = run1( $an, $get, '<p>As the Test Document says, “' . $bread . '” (TD 4).</p>' );
+check( '17e a registered short code still counts', 'high' === $q[0]['status'], json_encode( $q[0] ) );
+
+// 17f. 0.13.1: one short code for two documents ("DV" is Dei verbum and Donum veritatis). The words decide, or the name just before.
+$reg_sh = array(
+	'test-document' => $registry['test-document'],
+	'shared-doc'    => array( 'id' => 'shared-doc', 'title' => 'Shared Doc', 'short' => 'TD', 'aliases' => array(), 'url' => 'https://www.vatican.va/test/doc-b_shared-doc.html' ),
+);
+$an_sh = new AF_Analyzer( $reg_sh );
+list( , $ib_sh ) = build_index_for( $doc_b ); // $ib was reused by an earlier test
+$get_sh = function ( $id ) use ( $ia, $ib_sh ) { return 'test-document' === $id ? $ia : $ib_sh; };
+$q = run1( $an_sh, $get_sh, '<p>As it says, “' . $doc_a[3] . '” (TD 4).</p>' );
+check( '17f shared short "TD 4": the words are in Test Document -> high, that document', 'high' === $q[0]['status'] && 'test-document' === $q[0]['best']['doc'], json_encode( $q[0] ) );
+$q = run1( $an_sh, $get_sh, '<p>As it says, “' . $doc_b[1] . '” (TD 2).</p>' );
+check( '17g shared short "TD 2": the words are in Shared Doc -> high, that document', 'high' === $q[0]['status'] && 'shared-doc' === $q[0]['best']['doc'], json_encode( $q[0] ) );
+$q = run1( $an_sh, $get_sh, '<p>Here is what Shared Doc has to say:</p><blockquote>' . $doc_b[1] . '</blockquote><p>(TD 2)</p>' );
+check( '17h the name just before settles it, as a firm cite', 'high' === $q[0]['status'] && 1 === count( $q[0]['typed'] ) && 'shared-doc' === $q[0]['typed'][0]['doc'], json_encode( $q[0] ) );
+$q = run1( $an_sh, $get_sh, '<p>As it says, “' . $doc_a[3] . '” (TD 2).</p>' );
+check( '17i shared short, words in neither cited paragraph -> not a conflict with a guess', 'conflict' !== $q[0]['status'] || ! empty( $q[0]['typed'] ), json_encode( $q[0] ) );
+
 // Quotations inserted by the plugin carry the paragraph they are meant to be.
 $tdp4 = $doc_a[3];
 $mk   = function ( $doc, $loc, $text ) { return '<blockquote class="af-quote" data-af-doc="' . $doc . '" data-af-locator="' . $loc . '"><p>' . $text . '</p><footer class="af-quote__source">&mdash; <cite><a href="https://x.example/">Some Title, no. ' . $loc . '</a></cite></footer></blockquote>'; };

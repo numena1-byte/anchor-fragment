@@ -14,6 +14,9 @@
  * Request (POST, JSON, header x-key: the key):
  *   { "version": 1, "quote": "...", "document": { "id", "title", "short", "url" }, "locator": "25", "language": "en" }
  *   { "version": 1, "ping": true }   (a connection test: sends no quotation)
+ *   For a document that spans many pages (the Catechism) the plugin reads the cited paragraph itself and adds
+ *   "passage": "<its text>"; the service then compares the two texts and does not rank the paragraph among the others (rank 0).
+ *   A document with a "semantic_url" in the registry (a readable page standing in for a PDF) is sent under that address.
  *
  * Answer:
  *   { "version": 1, "ok": true,
@@ -21,7 +24,7 @@
  *     "models": { "embedding": "bge-m3", "judge": "llama-3.3-70b" } }
  *   or { "version": 1, "ok": false, "error": "..." }
  *
- *   rank   1 when the cited paragraph is the closest in meaning to the quotation, 2 when one other is closer, and so on
+ *   rank   1 when the cited paragraph is the closest in meaning to the quotation, 2 when one other is closer, and so on; 0 or null when not ranked
  *   score  how close the cited paragraph is, 0 to 1000 (thousandths of a cosine similarity)
  *   lead   how far the closest paragraph is ahead of the next one, 0 to 1000
  *   judge  a model's reading of the two texts: faithful_translation, loose_paraphrase, related_but_different or unrelated
@@ -37,16 +40,22 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'AF_TEST' ) ) {
 class AF_Semantic {
 
 	/** The request and answer format, and the rule below. A stored answer made under another version is asked again. */
-	const VERSION = 1;
+	const VERSION = 2;
 
 	const OPT_URL = 'af_semantic_url';
 	const OPT_KEY = 'af_semantic_key';
 
-	/** Agreement needs the cited paragraph first, at least this close, at least this far ahead, and a model that calls it a faithful translation. */
-	const MIN_SCORE = 650;
-	const MIN_LEAD  = 30;
+	/**
+	 * The rule (0.13.1). A model that calls the cited paragraph a faithful translation, with the paragraph at least this close,
+	 * is an agreement whatever its rank: short quotations rank badly because many paragraphs are about as close.
+	 */
+	const MIN_SCORE = 500;
+	/** The cited paragraph first and this close in wording, yet a model sees a difference: another translation is likely, so unclear, not a disagreement. */
+	const NEAR_SCORE = 750;
 	/** Below this the paragraph is not close to the quotation at all. */
 	const LOW_SCORE = 450;
+	/** A quotation shorter than this is not sent. */
+	const MIN_CHARS = 20;
 
 	const TIMEOUT = 40;
 
@@ -156,21 +165,27 @@ class AF_Semantic {
 			return array( 'result' => 'error', 'reason' => (string) ( $answer['error'] ?? 'the service gave no reason' ) );
 		}
 		$s     = (array) ( $answer['signals'] ?? array() );
-		$rank  = (int) ( $s['rank'] ?? 0 );
+		$rank  = (int) ( $s['rank'] ?? 0 ); // 0: the paragraph was compared alone, not ranked among the others
 		$score = (int) ( $s['score'] ?? 0 );
-		$lead  = (int) ( $s['lead'] ?? 0 );
+		$lead  = (int) ( $s['lead'] ?? 0 ); // kept in the answer; the 0.13.1 rule no longer needs it
 		$judge = (string) ( $s['judge'] ?? '' );
-		if ( $rank < 1 ) {
-			return array( 'result' => 'error', 'reason' => 'the answer had no ranking' );
+		if ( ! isset( $s['score'] ) ) {
+			return array( 'result' => 'error', 'reason' => 'the answer had no score' );
 		}
-		if ( 1 === $rank && $score >= self::MIN_SCORE && $lead >= self::MIN_LEAD && 'faithful_translation' === $judge ) {
-			return array( 'result' => 'agrees', 'reason' => 'the cited paragraph is the closest in meaning and a model reads it as a faithful translation' );
+		if ( 'faithful_translation' === $judge && $score >= self::MIN_SCORE ) {
+			return array( 'result' => 'agrees', 'reason' => $rank <= 1 ? 'the cited paragraph is the closest in meaning and a model reads it as a faithful translation' : 'a model reads the cited paragraph as a faithful translation (another paragraph is closer in meaning, but this one is close enough)' );
+		}
+		if ( 'unrelated' === $judge ) {
+			return array( 'result' => 'disagrees', 'reason' => 'a model reads the paragraph as unrelated' );
+		}
+		if ( $rank <= 1 && $score >= self::NEAR_SCORE ) {
+			return array( 'result' => 'inconclusive', 'reason' => 'the paragraph is very close in wording, but a model sees a difference; it may be another translation' );
+		}
+		if ( 'related_but_different' === $judge ) {
+			return array( 'result' => 'disagrees', 'reason' => 'a model reads the paragraph as related but different' );
 		}
 		if ( $rank > 1 ) {
 			return array( 'result' => 'disagrees', 'reason' => 'another paragraph is closer in meaning' );
-		}
-		if ( in_array( $judge, array( 'related_but_different', 'unrelated' ), true ) ) {
-			return array( 'result' => 'disagrees', 'reason' => 'a model reads the paragraph as ' . str_replace( '_', ' ', $judge ) );
 		}
 		if ( $score < self::LOW_SCORE ) {
 			return array( 'result' => 'disagrees', 'reason' => 'the paragraph is not close in meaning' );
@@ -184,17 +199,34 @@ class AF_Semantic {
 		return (string) $hash . '|' . (string) $doc . '|' . (int) $loc;
 	}
 
-	/** The stored answer for one quotation and paragraph, or null. An answer made under an older rule counts as none. */
+	/**
+	 * The stored answer for one quotation and paragraph, or null. An answer made under the first rule is read again under the
+	 * current one from the signals it kept, so nothing is asked twice; one that was "not asked" is asked again, because what
+	 * kept it from being asked may have changed.
+	 */
 	public static function lookup( $post_id, $hash, $doc, $loc ) {
 		if ( ! $post_id || '' === (string) $hash ) {
 			return null;
 		}
 		$store = get_option( 'af_sem_' . (int) $post_id );
 		$k     = self::key_of( $hash, $doc, $loc );
-		if ( ! is_array( $store ) || ! isset( $store[ $k ] ) || (int) ( $store[ $k ]['rule'] ?? 0 ) !== self::VERSION ) {
+		if ( ! is_array( $store ) || ! isset( $store[ $k ] ) ) {
 			return null;
 		}
-		return $store[ $k ];
+		$rec  = $store[ $k ];
+		$rule = (int) ( $rec['rule'] ?? 0 );
+		if ( self::VERSION === $rule ) {
+			return $rec;
+		}
+		if ( 1 === $rule && 'skipped' !== ( $rec['result'] ?? '' ) && isset( $rec['rank'], $rec['score'] ) ) {
+			$v = self::classify( array( 'ok' => true, 'signals' => array( 'rank' => $rec['rank'], 'score' => $rec['score'], 'lead' => $rec['lead'] ?? 0, 'judge' => $rec['judge'] ?? '' ) ) );
+			if ( 'error' !== $v['result'] ) {
+				$rec['result'] = $v['result'];
+				$rec['rule']   = self::VERSION;
+				return $rec;
+			}
+		}
+		return null;
 	}
 
 	public static function save( $post_id, $hash, $doc, $loc, array $rec ) {
@@ -265,6 +297,7 @@ class AF_Semantic {
 		$reg      = AF_Service::registry();
 		$analysed = array();
 		$stopped  = false;
+		$bad_docs = array();
 		foreach ( (array) $rows as $r ) {
 			if ( microtime( true ) - $t0 > $budget && $out['processed'] > 0 ) {
 				$stopped = true;
@@ -276,21 +309,30 @@ class AF_Semantic {
 				$out['last'] = (int) $r['id'];
 				continue;
 			}
-			$text = self::quote_text( $post_id, $hash, (int) $r['quote_ord'] );
-			if ( '' === $text && empty( $analysed[ $post_id ] ) ) {
+			$info = self::quote_info( $post_id, $hash, (int) $r['quote_ord'] );
+			if ( '' === $info['text'] && empty( $analysed[ $post_id ] ) ) {
 				// The post was matched before the words were kept; match it again once.
 				$analysed[ $post_id ] = true;
 				AF_Service::analyze_post( $post_id, false );
-				$text = self::quote_text( $post_id, $hash, (int) $r['quote_ord'] );
+				$info = self::quote_info( $post_id, $hash, (int) $r['quote_ord'] );
 			}
+			$text  = $info['text'];
 			$entry = $reg[ $r['doc'] ] ?? null;
 			$why   = '';
-			if ( '' === $text ) {
-				$why = 'the quotation is too short, or its words were found somewhere';
+			if ( 'out_of_scope' === $info['status'] ) {
+				$why = 'its words were found in another document' . ( '' !== $info['note'] ? ' (' . $info['note'] . ')' : '' );
+			} elseif ( '' === $text ) {
+				$why = 'the words of the quotation were not kept; match the post again';
+			} elseif ( mb_strlen( $text ) < self::MIN_CHARS ) {
+				$why = 'the quotation is too short';
 			} elseif ( ! $entry ) {
 				$why = 'unknown document';
-			} elseif ( ! empty( $entry['multipage'] ) || false !== stripos( (string) $entry['url'], '.pdf' ) ) {
-				$why = 'this document is not a single readable page';
+			} elseif ( empty( $entry['multipage'] ) && false !== stripos( (string) ( $entry['semantic_url'] ?? $entry['url'] ), '.pdf' ) ) {
+				$why = 'this document is a PDF with no readable page of its own';
+			} elseif ( ! empty( $bad_docs[ $r['doc'] ] ) ) {
+				$out['errors'][] = $entry['title'] . ': the service could not read this document, so it was not asked again in this run';
+				$out['last']     = (int) $r['id'];
+				continue;
 			}
 			if ( '' !== $why ) {
 				self::save( $post_id, $hash, $r['doc'], $r['loc_num'], array( 'result' => 'skipped', 'reason' => $why ) );
@@ -298,21 +340,33 @@ class AF_Semantic {
 				$out['last'] = (int) $r['id'];
 				continue;
 			}
-			$answer = self::post(
-				array(
-					'version'  => self::VERSION,
-					'quote'    => $text,
-					'document' => array( 'id' => $r['doc'], 'title' => $entry['title'] ?? $r['doc'], 'short' => $entry['short'] ?? '', 'url' => $entry['url'] ),
-					'locator'  => (string) (int) $r['loc_num'],
-					'language' => $entry['language'] ?? 'en',
-				)
+			$request = array(
+				'version'  => self::VERSION,
+				'quote'    => $text,
+				'document' => array( 'id' => $r['doc'], 'title' => $entry['title'] ?? $r['doc'], 'short' => $entry['short'] ?? '', 'url' => $entry['semantic_url'] ?? $entry['url'] ),
+				'locator'  => (string) (int) $r['loc_num'],
+				'language' => $entry['language'] ?? 'en',
 			);
+			if ( ! empty( $entry['multipage'] ) ) {
+				// Many pages: this site reads the cited paragraph and the service compares the two texts.
+				$p = AF_Service::passage( $r['doc'], (int) $r['loc_num'] );
+				if ( is_wp_error( $p ) || '' === trim( (string) ( $p['text'] ?? '' ) ) ) {
+					$out['errors'][] = '#' . $post_id . ' ' . $r['doc'] . ' ' . $r['loc_num'] . ': the paragraph text could not be read (' . ( is_wp_error( $p ) ? $p->get_error_message() : 'empty' ) . ')';
+					$out['last']     = (int) $r['id'];
+					continue;
+				}
+				$request['passage'] = mb_substr( (string) $p['text'], 0, 6000 );
+			}
+			$answer = self::post( $request );
 			if ( is_wp_error( $answer ) ) {
 				$out['errors'][] = $answer->get_error_message();
 				$stopped         = true; // do not keep asking a service that is not answering
 				break;
 			}
 			$verdict = self::classify( $answer );
+			if ( 'error' === $verdict['result'] && false !== stripos( (string) $verdict['reason'], 'could not read numbered paragraphs' ) ) {
+				$bad_docs[ $r['doc'] ] = true;
+			}
 			if ( 'error' === $verdict['result'] ) {
 				$out['errors'][] = '#' . $post_id . ' ' . $r['doc'] . ' ' . $r['loc_num'] . ': ' . $verdict['reason'];
 				$out['last']     = (int) $r['id'];
@@ -349,17 +403,18 @@ class AF_Semantic {
 		return $out;
 	}
 
-	/** The words of a quotation, from the post's stored match result. Empty when they were not kept. */
-	private static function quote_text( $post_id, $hash, $ord ) {
-		$m = get_option( 'af_match_' . (int) $post_id );
+	/** The words, status and note of a quotation, from the post's stored match result. The words are empty when they were not kept. */
+	private static function quote_info( $post_id, $hash, $ord ) {
+		$none = array( 'text' => '', 'status' => '', 'note' => '' );
+		$m    = get_option( 'af_match_' . (int) $post_id );
 		if ( ! is_array( $m ) ) {
-			return '';
+			return $none;
 		}
 		foreach ( (array) ( $m['quotes'] ?? array() ) as $q ) {
 			if ( ( '' !== $hash && ( $q['hash'] ?? '' ) === $hash ) || ( '' === $hash && (int) $q['i'] === (int) $ord ) ) {
-				return trim( (string) ( $q['text'] ?? '' ) );
+				return array( 'text' => trim( (string) ( $q['text'] ?? '' ) ), 'status' => (string) ( $q['status'] ?? '' ), 'note' => (string) ( $q['note'] ?? '' ) );
 			}
 		}
-		return '';
+		return $none;
 	}
 }

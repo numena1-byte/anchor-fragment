@@ -193,6 +193,7 @@
 			"expected_count": 325,
 			"max_locator": 325,
 			"url": "https://www.vatican.va/content/dam/francesco/pdf/apost_exhortations/documents/papa-francesco_esortazione-ap_20160319_amoris-laetitia_en.pdf",
+			"semantic_url": "https://www.vatican.va/content/francesco/en/apost_exhortations/documents/papa-francesco_esortazione-ap_20160319_amoris-laetitia.html",
 			"hosted": {
 				"url": "https://raw.githubusercontent.com/numena1-byte/anchor-fragment/c9be65f13afef9f258ee402c6013bfc08452eda6/data/amoris-laetitia@v1.json",
 				"sha256": "1b7584d3e2641ac4061bbdf119dc3c123a4088f3a9f9d77518bd9e614add5d95"
@@ -222,6 +223,48 @@
 			"scheme": "paragraph",
 			"expected_count": 245,
 			"url": "https://www.vatican.va/content/leo-xiv/en/encyclicals/documents/20260515-magnifica-humanitas.html"
+		},
+		{
+			"id": "donum-veritatis",
+			"title": "Donum veritatis",
+			"short": "DV",
+			"aliases": [
+				"donum veritatis",
+				"instruction on the ecclesial vocation of the theologian"
+			],
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 42,
+			"max_locator": 42,
+			"url": "https://www.vatican.va/roman_curia/congregations/cfaith/documents/rc_con_cfaith_doc_19900524_theologian-vocation_en.html"
+		},
+		{
+			"id": "evangelium-vitae",
+			"title": "Evangelium vitae",
+			"short": "EV",
+			"aliases": [
+				"evangelium vitae",
+				"the gospel of life"
+			],
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 105,
+			"max_locator": 105,
+			"url": "https://www.vatican.va/content/john-paul-ii/en/encyclicals/documents/hf_jp-ii_enc_25031995_evangelium-vitae.html"
+		},
+		{
+			"id": "humanae-vitae",
+			"title": "Humanae vitae",
+			"short": "HV",
+			"aliases": [
+				"humanae vitae",
+				"on the regulation of birth"
+			],
+			"language": "en",
+			"scheme": "paragraph",
+			"expected_count": 31,
+			"max_locator": 31,
+			"url": "https://www.vatican.va/content/paul-vi/en/encyclicals/documents/hf_p-vi_enc_25071968_humanae-vitae.html"
 		}
 	]
 }
