@@ -16,7 +16,7 @@
  *   { "version": 1, "ping": true }   (a connection test: sends no quotation)
  *   For a document that spans many pages (the Catechism) the plugin reads the cited paragraph itself and adds
  *   "passage": "<its text>"; the service then compares the two texts and does not rank the paragraph among the others (rank 0).
- *   A document with a "semantic_url" in the registry (a readable page standing in for a PDF) is sent under that address.
+ *   The same for a PDF, using the paragraph text an author added from it on this site; with no text added the paragraph is not asked.
  *
  * Answer:
  *   { "version": 1, "ok": true,
@@ -327,8 +327,6 @@ class AF_Semantic {
 				$why = 'the quotation is too short';
 			} elseif ( ! $entry ) {
 				$why = 'unknown document';
-			} elseif ( empty( $entry['multipage'] ) && false !== stripos( (string) ( $entry['semantic_url'] ?? $entry['url'] ), '.pdf' ) ) {
-				$why = 'this document is a PDF with no readable page of its own';
 			} elseif ( ! empty( $bad_docs[ $r['doc'] ] ) ) {
 				$out['errors'][] = $entry['title'] . ': the service could not read this document, so it was not asked again in this run';
 				$out['last']     = (int) $r['id'];
@@ -343,13 +341,18 @@ class AF_Semantic {
 			$request = array(
 				'version'  => self::VERSION,
 				'quote'    => $text,
-				'document' => array( 'id' => $r['doc'], 'title' => $entry['title'] ?? $r['doc'], 'short' => $entry['short'] ?? '', 'url' => $entry['semantic_url'] ?? $entry['url'] ),
+				'document' => array( 'id' => $r['doc'], 'title' => $entry['title'] ?? $r['doc'], 'short' => $entry['short'] ?? '', 'url' => $entry['url'] ),
 				'locator'  => (string) (int) $r['loc_num'],
 				'language' => $entry['language'] ?? 'en',
 			);
-			if ( ! empty( $entry['multipage'] ) ) {
-				// Many pages: this site reads the cited paragraph and the service compares the two texts.
+			if ( ! empty( $entry['multipage'] ) || false !== stripos( (string) $entry['url'], '.pdf' ) ) {
+				// Many pages, or a PDF: this site reads the cited paragraph (a PDF's text is what an author added from it) and the service compares the two texts.
 				$p = AF_Service::passage( $r['doc'], (int) $r['loc_num'] );
+				if ( is_wp_error( $p ) && 'af_pdf_text' === $p->get_error_code() ) {
+					$out['skipped']++; // not saved: it is asked once the text has been added
+					$out['last'] = (int) $r['id'];
+					continue;
+				}
 				if ( is_wp_error( $p ) || '' === trim( (string) ( $p['text'] ?? '' ) ) ) {
 					$out['errors'][] = '#' . $post_id . ' ' . $r['doc'] . ' ' . $r['loc_num'] . ': the paragraph text could not be read (' . ( is_wp_error( $p ) ? $p->get_error_message() : 'empty' ) . ')';
 					$out['last']     = (int) $r['id'];

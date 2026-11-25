@@ -47,10 +47,13 @@ class AF_Service {
 		return array(
 			'dei-verbum' => array( 'title' => 'Dei Verbum', 'short' => 'DV', 'url' => 'https://www.vatican.va/dv.html', 'language' => 'en' ),
 			'catechism'  => array( 'title' => 'Catechism', 'short' => 'CCC', 'url' => 'https://www.vatican.va/ccc/index.html', 'multipage' => true ),
+			'amoris-laetitia' => array( 'title' => 'Amoris laetitia', 'short' => 'AL', 'url' => 'https://www.vatican.va/al.pdf', 'language' => 'en' ),
 		);
 	}
 	public static $passage_fails = false;
+	public static $pdf_text = false;
 	public static function passage( $id, $loc ) {
+		if ( 'amoris-laetitia' === $id && empty( self::$pdf_text ) ) { return new WP_Error( 'af_pdf_text', 'Amoris laetitia is a PDF. The text has not been added.' ); }
 		if ( self::$passage_fails ) { return new WP_Error( 'af_http', 'vatican.va answered HTTP 503' ); }
 		return array( 'doc' => $id, 'locator' => $loc, 'text' => 'The text of paragraph ' . $loc . ' of the Catechism.' );
 	}
@@ -190,6 +193,16 @@ check( 'the short one says why', false !== strpos( AF_Semantic::summary( AF_Sema
 AF_Service::$passage_fails = false;
 $o = AF_Semantic::step( 0, false, 20.0 );
 check( 'the unreadable one is asked once it can be read', 1 === $o['processed'] && 'The text of paragraph 56 of the Catechism.' === $sent[0]['passage'], json_encode( $o ) );
+
+// 0.13.1: a PDF is asked only for paragraphs whose text an author has added from it.
+$GLOBALS['opts']['af_match_3'] = array( 'post_id' => 3, 'quotes' => array( nf( 0, 'hp', 'A quotation from Amoris laetitia that is long enough to send.', 'amoris-laetitia', 150 ) ) );
+AF_Graph::record_post( 3, $GLOBALS['opts']['af_match_3'] );
+$sent = array();
+$o = AF_Semantic::step( 0, false, 20.0 );
+check( 'a PDF paragraph with no text added is not asked and not remembered as asked', 0 === count( $sent ) && 1 === $o['skipped'] && null === AF_Semantic::lookup( 3, 'hp', 'amoris-laetitia', 150 ), json_encode( $o ) );
+AF_Service::$pdf_text = true;
+$o = AF_Semantic::step( 0, false, 20.0 );
+check( 'once the text is added it is asked, with the paragraph text', 1 === $o['processed'] && false !== strpos( $sent[0]['passage'], 'paragraph 150' ), json_encode( $o ) );
 
 // A service that is down stops the run and keeps the rest for later.
 $GLOBALS['opts']['af_match_2'] = array( 'post_id' => 2, 'quotes' => array( nf( 0, 'hz', 'Second post words nothing matched.', 'dei-verbum', 5 ) ) );
