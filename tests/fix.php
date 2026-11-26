@@ -80,7 +80,7 @@ $res1 = array( 'quotes' => array(
 	q( 5, 'no_match', null, array( array( 'doc' => 'catechism', 'loc' => array( 77 ), 'indexed' => true ) ) ),
 	q( 6, 'high', $b( 'catechism', array( 1670 ) ), array( array( 'doc' => 'catechism', 'loc' => array( 1670 ) ) ) ),
 ) );
-$GLOBALS['opts']['af_match_1'] = array( 'quotes' => array( array( 'i' => 1, 'excerpt' => 'And this We do relying', 'note' => 'typed humanae-vitae 29, text matches humanae-vitae 31' ) ) );
+$GLOBALS['opts']['af_match_1'] = array( 'quotes' => array( array( 'i' => 1, 'excerpt' => 'And this We do relying', 'note' => 'typed humanae-vitae 29, text matches humanae-vitae 31', 'around' => array( 'before' => 'the Pope writes,', 'after' => 'He goes on.' ) ) ) );
 AF_Graph::record_post( 1, $res1 );
 AF_Graph::record_post( 2, array( 'quotes' => array( q( 0, 'conflict', $b( 'donum-veritatis', array( 23, 24 ), 0.99 ), array( array( 'doc' => 'donum-veritatis', 'loc' => array( 28 ) ) ) ) ) ) );
 $reg = AF_Service::registry();
@@ -107,6 +107,7 @@ check( 'conflicts listed, not the high one', 5 === $r['shown'], (string) $r['sho
 check( 'counts per kind', 5 === $r['counts']['conflict'] && 1 === $r['counts']['ambiguous'] && 1 === $r['counts']['not_found'], json_encode( $r['counts'] ) );
 check( 'sorted by post title and carries the edit link', 'Alpha' === $r['items'][0]['title'] && false !== strpos( $r['items'][0]['edit_url'], 'post=1' ) && 'Beta' === $r['items'][4]['title'], json_encode( array_column( $r['items'], 'title' ) ) );
 check( 'the excerpt and matcher note come along', 'And this We do relying' === $r['items'][1]['excerpt'] && '' !== $r['items'][1]['note'] );
+check( 'the words around the quotation come along', 'the Pope writes,' === $r['items'][1]['around']['before'] && 'He goes on.' === $r['items'][1]['around']['after'], json_encode( $r['items'][1]['around'] ?? null ) );
 check( 'paragraph links are filled in', 'https://v.example/humanae-vitae#31' === $r['items'][1]['found'][0]['link'], json_encode( $r['items'][1]['found'] ) );
 check( 'all kinds together', 7 === AF_Fix::items( array( 'kind' => 'all' ) )['shown'] );
 check( 'filter by document', 3 === AF_Fix::items( array( 'kind' => 'conflict', 'doc' => 'humanae-vitae' ) )['shown'] );

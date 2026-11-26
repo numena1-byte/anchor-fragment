@@ -218,6 +218,7 @@ class AF_Fix {
 					'ord'      => $g['ord'],
 					'excerpt'  => $g['excerpt'],
 					'note'     => $g['note'],
+					'around'   => isset( $g['around'] ) ? $g['around'] : array(),
 					'state'    => $state,
 					'second'   => array_values( array_filter( array_map( function ( $e ) { return isset( $e['second'] ) ? $e['second'] : ''; }, $g['edges'] ) ) ),
 				) + $d;
@@ -391,7 +392,13 @@ class AF_Fix {
 				}
 				h.appendChild(badge);
 				c.appendChild(h);
-				if (it.excerpt) { c.appendChild(el('p', '\u201c' + it.excerpt + (it.excerpt.length > 90 ? '\u2026' : '') + '\u201d')).className = 'af-quote'; }
+				if (it.excerpt) {
+					var qp = el('p'); qp.className = 'af-quote';
+					if (it.around && it.around.before) { qp.appendChild(el('span', '\u2026' + it.around.before + ' ', 'font-style:normal;color:#787c82')); }
+					qp.appendChild(el('span', '\u201c' + it.excerpt + (it.excerpt.length > 90 ? '\u2026' : '') + '\u201d'));
+					if (it.around && it.around.after) { qp.appendChild(el('span', ' ' + it.around.after + '\u2026', 'font-style:normal;color:#787c82')); }
+					c.appendChild(qp);
+				}
 				var cites = el('div'); cites.className = 'af-cites';
 				if (it.kind !== 'ambiguous') { cites.appendChild(citeLine('You cited: ', it.cited)); }
 				if (it.kind !== 'not_found') { cites.appendChild(citeLine(it.kind === 'ambiguous' ? 'Fits: ' : 'Words found in: ', it.found)); }

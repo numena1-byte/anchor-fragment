@@ -41,3 +41,8 @@ A new screen, Tools > Citations to fix, lists the quotations whose cite and word
 ## 0.14.1
 
 A cite that starts the sentence right after a quotation and is its subject ("... Catechism 1735 concerns freedom and culpability") is now a mention of that paragraph, not the quotation's source. Before, it was attached to the quotation just ended, so a footnote quoted from a pope's text (which merely names the Catechism paragraph) showed up as "cited Catechism 1735, not found". Cites in brackets or ending the sentence after the quotation are unaffected.
+
+## 0.14.2
+
+- **Earlier wordings of revised paragraphs.** The Catechism's no. 2267 (the death penalty) was rewritten in 2018, and the vatican.va text is the new one, so posts quoting the 1997 wording showed up as "not found". The plugin now ships `data/catechism-editions.json`: hashed five-word runs (never text) of the old no. 2267, merged into the Catechism's index when matching. A quotation of the old wording matches paragraph 2267 as usual. The file can take other paragraphs and other revised documents.
+- **Context on the review cards.** Each card on Tools > Citations to fix now shows a few words either side of the quotation, so you can see what the cite was read from. It appears once the post is matched again.

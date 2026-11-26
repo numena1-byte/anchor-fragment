@@ -439,11 +439,13 @@ class AF_Graph {
 			$m   = get_option( 'af_match_' . (int) $k['post_id'] );
 			$exc = '';
 			$note = '';
+			$around = array();
 			if ( is_array( $m ) && ! empty( $m['quotes'] ) ) {
 				foreach ( $m['quotes'] as $q ) {
 					if ( (int) $q['i'] === (int) $k['quote_ord'] ) {
 						$exc  = (string) ( $q['excerpt'] ?? '' );
 						$note = (string) ( $q['note'] ?? '' );
+						$around = isset( $q['around'] ) && is_array( $q['around'] ) ? $q['around'] : array();
 						break;
 					}
 				}
@@ -467,6 +469,7 @@ class AF_Graph {
 				'url'     => $post ? get_permalink( $post ) : '',
 				'excerpt' => $exc,
 				'note'    => $note,
+				'around'  => $around,
 				'edges'   => $edges,
 			);
 		}

@@ -303,7 +303,7 @@ class AF_Service {
 			wpautop( $post->post_content ),
 			$tags,
 			function ( $doc_id ) {
-				return AF_Service::load_index( $doc_id );
+				return AF_Service::load_index_for_match( $doc_id );
 			}
 		);
 
@@ -373,6 +373,37 @@ class AF_Service {
 			$all += $part; // Shards hold different keys, so a union is a merge.
 		}
 		return $all;
+	}
+
+	/**
+	 * Earlier wordings of paragraphs the Church has since revised (the Catechism's no. 2267, before 2018), as hashed word runs
+	 * shipped with the plugin. Posts that quote the old wording are matched to the number it had.
+	 *
+	 * @return array[] each { id, doc, locator, label, hashes[] }
+	 */
+	public static function editions( $doc = null ) {
+		static $all = null;
+		if ( null === $all ) {
+			$all  = array();
+			$file = AF_DIR . 'data/catechism-editions.json';
+			$d    = is_readable( $file ) ? json_decode( (string) file_get_contents( $file ), true ) : null;
+			if ( is_array( $d ) && 1 === (int) ( $d['format'] ?? 0 ) && (int) ( $d['matcher_k'] ?? 0 ) === AF_Matcher::K && is_array( $d['editions'] ?? null ) ) {
+				$all = $d['editions'];
+			}
+		}
+		return null === $doc ? $all : array_values( array_filter( $all, function ( $e ) use ( $doc ) { return ( $e['doc'] ?? '' ) === $doc; } ) );
+	}
+
+	/** A document's index for matching quotations: the stored index plus the earlier wordings. */
+	public static function load_index_for_match( $id ) {
+		$idx = self::load_index( $id );
+		if ( ! is_array( $idx ) ) {
+			return $idx;
+		}
+		foreach ( self::editions( $id ) as $e ) {
+			$idx = AF_Matcher::merge_index( $idx, (array) $e['hashes'], (int) $e['locator'] );
+		}
+		return $idx;
 	}
 
 	/** Remove everything stored for one document. */

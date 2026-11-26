@@ -546,6 +546,8 @@ class AF_Analyzer {
 				'hints'     => $hints,
 				'tag_hints' => $tag_docs,
 				'note'      => $note,
+				// A little of the text on either side, so a review screen can show what the cite was read from.
+				'around'    => array( 'before' => mb_substr( trim( (string) $q['lead'] ), -170 ), 'after' => mb_substr( trim( (string) $q['after'] ), 0, 140 ) ),
 			);
 		}
 

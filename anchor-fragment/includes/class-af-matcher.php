@@ -95,6 +95,31 @@ class AF_Matcher {
 	}
 
 	/**
+	 * Add run hashes to an index under one paragraph number (an earlier wording of that paragraph).
+	 *
+	 * @param array $idx    Index from build_index().
+	 * @param int[] $hashes Run hashes.
+	 * @param int   $loc    Paragraph number.
+	 * @return array
+	 */
+	public static function merge_index( array $idx, array $hashes, $loc ) {
+		$n = (int) $loc;
+		foreach ( $hashes as $h ) {
+			$h = (int) $h;
+			if ( ! isset( $idx[ $h ] ) ) {
+				$idx[ $h ] = $n;
+			} elseif ( is_int( $idx[ $h ] ) ) {
+				if ( $idx[ $h ] !== $n ) {
+					$idx[ $h ] = array( $idx[ $h ], $n );
+				}
+			} elseif ( ! in_array( $n, $idx[ $h ], true ) ) {
+				$idx[ $h ][] = $n;
+			}
+		}
+		return $idx;
+	}
+
+	/**
 	 * Score a quotation against one document's index.
 	 *
 	 * @param array[] $segments Token lists from segments().
