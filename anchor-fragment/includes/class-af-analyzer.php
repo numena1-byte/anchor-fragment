@@ -123,6 +123,15 @@ class AF_Analyzer {
 		foreach ( $this->extract( $html ) as $q ) {
 			$n++;
 
+			// The Compendium of the Catechism is a different book with its own numbers: "(Compendium of the CCC 176)" cites nothing in the Catechism.
+			foreach ( array( 'cite', 'after', 'lead' ) as $fld ) {
+				$q[ $fld ] = preg_replace( '/\bcompendium\s+of\s+the\s+(?:catechism(?:\s+of\s+the\s+catholic\s+church)?|ccc)\b[\s,.]*(?:nn?\.|nos?\.|#)?\s*\d+[a-z]?/iu', ' ', (string) $q[ $fld ] );
+			}
+			// Text after the quotation that is not a cite but a sentence of the author's ("Citing Amoris Laetitia 292, he added", "It's also a
+			// rejection of Lumen Gentium 25") is not read for the cite of this quotation.
+			// It still tells which document is being discussed, but is not a cite of this quotation.
+			$after_cite = $this->after_is_prose( $q['after'] ) ? '' : $q['after'];
+
 			// A cite at the end of the quotation's own paragraph, as in "... the weakest" (DT 16).", belongs to the quotation and
 			// is not part of its words. When there is one, it is the author's citation of this quotation: a cite in the text before
 			// or after, which is usually about the neighbouring quotation, is not read for it.
@@ -142,7 +151,7 @@ class AF_Analyzer {
 			}
 
 			// The same when the cite follows the closing quotation mark: "...evolutionary one” (GS 5). The Catechism says ...".
-			if ( ! $has_own && preg_match( '/^[\s\x{201D}\x{2019}"\']*[(\[]((?:[^()\[\]]|\([^()]*\)|\[[A-Za-z]{1,8}\]){1,160})[)\]]/us', $q['after'], $am ) && ( $this->cites( $am[1] ) || $this->marked_cites( $am[1] ) || $this->bare_cites( '(' . $am[1] . ')' ) ) ) {
+			if ( ! $has_own && preg_match( '/^[\s\x{201D}\x{2019}"\']*[(\[]((?:[^()\[\]]|\([^()]*\)|\[[A-Za-z]{1,8}\]){1,160})[)\]]/us', $after_cite, $am ) && ( $this->cites( $am[1] ) || $this->marked_cites( $am[1] ) || $this->bare_cites( '(' . $am[1] . ')' ) ) ) {
 				$q['cite'] = trim( $q['cite'] . ' (' . $am[1] . ')' );
 				$has_own   = true;
 			}
@@ -216,7 +225,7 @@ class AF_Analyzer {
 			$attached = array();
 			if ( ! $has_own ) {
 				$lead_sent = preg_split( '/(?<=[.!?])\s+(?=[\p{Lu}\x{201C}"(])/u', trim( $q['lead'] ) );
-				$aft       = mb_substr( ltrim( $q['after'], " \t\n\x{201D}\x{2019}\"'" ), 0, 60 );
+				$aft       = mb_substr( ltrim( $after_cite, " \t\n\x{201D}\x{2019}\"'" ), 0, 60 );
 				// "...” Catechism 1735 concerns freedom": the cite starts the next sentence and is its subject, so the post is
 				// talking about that paragraph, not citing it as the source of the quotation just ended.
 				if ( preg_match( '/^[\s(\[\x{2014}\x{2013}-]*\p{Lu}[^.;:()\[\]]{0,60}?\d+[a-z]?(?:\s*[-\x{2013},]\s*\d+)*\s+\p{Ll}/u', $aft ) ) {
@@ -293,8 +302,8 @@ class AF_Analyzer {
 			}
 			// "(EV 56)" or "(HV 20)" right after the quotation, naming a work that is not in the registry: the number belongs to
 			// that work, so no number found in the text around it ("in paragraph 56 of the encyclical") is guessed for a document.
-			$foreign_cite = ! $has_own && $this->foreign_cite_after( $q['after'] );
-			foreach ( $foreign_cite ? array() : $this->bare_cites( $has_own ? $q['cite'] : $q['cite'] . ' ' . $q['after'] ) as $loc ) {
+			$foreign_cite = ! $has_own && $this->foreign_cite_after( $after_cite );
+			foreach ( $foreign_cite ? array() : $this->bare_cites( $has_own ? $q['cite'] : $q['cite'] . ' ' . $after_cite ) as $loc ) {
 				$doc = null !== $lead_doc ? $lead_doc : $carry;
 				if ( null === $doc && 1 === count( $hints ) ) {
 					$doc = $hints[0];
@@ -306,7 +315,7 @@ class AF_Analyzer {
 			// and "para. 892" count only with a document named in the same sentence. The number still has to
 			// agree with the text before it counts.
 			$tail = mb_substr( $q['lead'], -100 );
-			$head = mb_substr( $q['after'], 0, 100 );
+			$head = mb_substr( $after_cite, 0, 100 );
 			// Each stretch of text is read on its own, so that a sentence cannot run from the text before the
 			// quotation into the text after it.
 			$marked = $foreign_cite ? array() : ( $has_own ? $this->marked_cites( $q['cite'] ) : array_merge( $this->marked_cites( $q['cite'] ), $this->marked_cites( $tail ), $this->marked_cites( $head ) ) );
@@ -598,6 +607,54 @@ class AF_Analyzer {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Whether the text right after a quotation is the author's own sentence rather than a cite.
+	 *
+	 * A cite follows a quotation as a bracket, a dash, a footnote number or the name of the document ("EG 30", "(Evangelii
+	 * Gaudium 30)", "Lumen Gentium 25 says ..."). A capitalised word that is not the start of a document's name, a code or a
+	 * "cf./see" opens a sentence ("Citing Amoris Laetitia 292, he added", "(Footnote 39 says ...)", "This is followed by article 892"),
+	 * and a closing quotation mark with no opening one before it means the cite sits inside the quotation, which nested quotation
+	 * marks ended early.
+	 */
+	private function after_is_prose( $after ) {
+		static $allowed = null;
+		$a = ltrim( (string) $after, " \t\n\x{201D}\x{2019}\"'" );
+		if ( '' === $a ) {
+			return false;
+		}
+		if ( preg_match( '/^[^\x{201C}]{0,140}?\x{201D}/u', $a ) ) {
+			return true;
+		}
+		if ( preg_match( '/^\s*[\x{2014}\x{2013}-]/u', $a ) || ! preg_match( '/^[\s(\[*,;:]*(\p{L}[\p{L}\x{2019}\']*)/u', $a, $m ) ) {
+			return false;
+		}
+		$w = $m[1];
+		// "This is followed by the reference to article 4 of ...": the author naming the reference that goes with the quotation.
+		if ( preg_match( '/^(?:this|that|it)\s+is\s+(?:then\s+)?followed\s+by\s+(?:the\s+)?(?:reference|citation|cite)\b/iu', $a ) ) {
+			return false;
+		}
+		if ( ! preg_match( '/^\p{Lu}/u', $w ) || preg_match( '/^\p{Lu}{2,6}$/u', $w ) ) {
+			return false;
+		}
+		if ( null === $allowed ) {
+			$allowed = array_flip( array( 'cf', 'see', 'ibid', 'ibidem', 'idem', 'compare', 'also', 'pope', 'st', 'saint', 'blessed', 'john', 'paul', 'benedict', 'francis', 'leo', 'pius', 'council', 'vatican', 'second', 'encyclical', 'apostolic', 'exhortation', 'constitution', 'decree', 'declaration', 'letter', 'paragraph', 'paragraphs', 'para', 'article', 'art', 'section', 'sect', 'chapter', 'chap', 'no', 'nos', 'number', 'n', 'nn', 'page', 'footnote', 'note' ) );
+			foreach ( $this->docs as $d ) {
+				foreach ( $d['aliases'] as $al ) {
+					$allowed[ strtok( $al, ' ' ) ] = true;
+				}
+				if ( '' !== $d['short'] ) {
+					$allowed[ strtolower( $d['short'] ) ] = true;
+				}
+			}
+			// Small words that begin an alias ("the joy of the gospel", "on love in the family") also begin ordinary sentences.
+			foreach ( array( 'the', 'a', 'an', 'on', 'of', 'in', 'to', 'and', 'de', 'et', 'for', 'with', 'by', 'from', 'at', 'this', 'that', 'it', 'is' ) as $stop ) {
+				unset( $allowed[ $stop ] );
+			}
+		}
+		$lw = rtrim( self::lite( $w ), "s'" );
+		return ! isset( $allowed[ self::lite( $w ) ] ) && ! isset( $allowed[ $lw ] );
 	}
 
 	/**

@@ -408,6 +408,25 @@ check( '17k a cite that ends the sentence after the quotation is attached', ! em
 $q = run1( $an, $get, '<p>The footnote says, “' . $bread . '” (TD 4) and goes on.</p>' );
 check( '17l a bracketed cite is attached', ! empty( $q[0]['typed'] ) && true === $q[0]['typed'][0]['attached'], json_encode( $q[0] ) );
 
+// 17m-17t. 0.14.3: text after the quotation that is the author's own sentence, not a cite.
+$q = run1( $an, $get, '<p>He wrote, “' . $bread . '” Citing Test Document 4, he added that the rest is silence.</p>' );
+check( '17m "Citing TD 4, he added" is not the cite of the quotation before it', ! empty( $q[0]['typed'] ) && false === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
+$q = run1( $an, $get, '<p>He wrote, “' . $bread . '” It is also a rejection of Test Document 4, Canon 752 and more.</p>' );
+check( '17n "It is also a rejection of TD 4" is not a cite', ! empty( $q[0]['typed'] ) && false === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
+$q = run1( $an, $get, '<p>He wrote, “' . $bread . '” (Footnote 39 says, “See Test Document, 4.”)</p>' );
+check( '17o a bracket that is a sentence of the author is not a cite', empty( $q[0]['typed'] ) || false === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
+$q = run1( $an, $get, '<p>He wrote, “' . $bread . '” The revised formulation of Test Document 4, states:</p>' );
+check( '17p "The revised formulation of TD 4, states:" is not a cite', ! empty( $q[0]['typed'] ) && false === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
+$q = run1( $an, $get, '<p>He wrote, “' . $bread . '” (Test Document 4).</p>' );
+check( '17q a bracketed document name is still a cite', ! empty( $q[0]['typed'] ) && true === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
+$q = run1( $an, $get, '<p>He wrote, “' . $bread . '” — Pope Francis, Test Document 4.</p>' );
+check( '17r a dash and a name still attribute', ! empty( $q[0]['typed'] ) && true === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
+$q = run1( $an, $get, '<p>The text says, “' . $bread . '” (Test Document 4), will not be possible.” And that was all.</p>' );
+check( '17s a cite inside the quotation (nested quotation marks ended it early) is not the author\'s', empty( $q[0]['typed'] ) || false === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
+$an_c = new AF_Analyzer( array( 'catechism' => array( 'id' => 'catechism', 'title' => 'Catechism of the Catholic Church', 'short' => 'CCC', 'aliases' => array( 'catechism of the catholic church', 'catechism', 'ccc' ), 'url' => 'https://example.org/ccc.htm', 'expected_count' => 2865 ) ) );
+$r_c = $an_c->analyze( '<p>It says, “' . $bread . '” (Compendium of the CCC 176).</p><p>Then, “' . $bread . '” (CCC 176).</p>', array(), function () { return null; } );
+check( '17t "(Compendium of the CCC 176)" cites nothing in the Catechism, "(CCC 176)" does', empty( $r_c['quotes'][0]['typed'] ) && ! empty( $r_c['quotes'][1]['typed'] ), json_encode( array( $r_c['quotes'][0]['typed'], $r_c['quotes'][1]['typed'] ?? null ) ) );
+
 // Quotations inserted by the plugin carry the paragraph they are meant to be.
 $tdp4 = $doc_a[3];
 $mk   = function ( $doc, $loc, $text ) { return '<blockquote class="af-quote" data-af-doc="' . $doc . '" data-af-locator="' . $loc . '"><p>' . $text . '</p><footer class="af-quote__source">&mdash; <cite><a href="https://x.example/">Some Title, no. ' . $loc . '</a></cite></footer></blockquote>'; };

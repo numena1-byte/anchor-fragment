@@ -46,3 +46,14 @@ A cite that starts the sentence right after a quotation and is its subject ("...
 
 - **Earlier wordings of revised paragraphs.** The Catechism's no. 2267 (the death penalty) was rewritten in 2018, and the vatican.va text is the new one, so posts quoting the 1997 wording showed up as "not found". The plugin now ships `data/catechism-editions.json`: hashed five-word runs (never text) of the old no. 2267, merged into the Catechism's index when matching. A quotation of the old wording matches paragraph 2267 as usual. The file can take other paragraphs and other revised documents.
 - **Context on the review cards.** Each card on Tools > Citations to fix now shows a few words either side of the quotation, so you can see what the cite was read from. It appears once the post is matched again.
+
+## 0.14.3
+
+Reading what follows a quotation more carefully. A cite is no longer taken from text after the quotation when that text is the author's own sentence rather than a cite:
+
+- "Citing Amoris Laetitia 292, he added ..." and "It's also a rejection of Lumen Gentium 25 ..." (a capitalised word that does not begin a document's name, a code, or a "cf./see").
+- "(Footnote 39 says, ...)" and "(Note that ... paragraph 2296 of the Catechism ...)" (a bracket that is a sentence).
+- "The revised formulation of Catechism #2267, states:" (a sentence that introduces the next quotation).
+- A closing quotation mark with no opening one before it: the cite sits inside the quotation, which nested quotation marks ended early.
+
+A bracket or a dash and a name still attribute, as before. Also, "(Compendium of the CCC 176)" is no longer read as Catechism 176, since the Compendium has its own numbers. The text after the quotation still tells which document is being discussed.
