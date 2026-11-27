@@ -311,14 +311,11 @@ class AF_Analyzer {
 			$foreign_cite = ! $has_own && $this->foreign_cite_after( $after_cite );
 			foreach ( $foreign_cite ? array() : $this->bare_cites( $has_own ? $q['cite'] : $q['cite'] . ' ' . $after_cite ) as $loc ) {
 				$doc = null !== $lead_doc ? $lead_doc : $carry;
-				if ( null === $doc ) {
-					$doc = $carry2;
-				}
 				if ( null === $doc && 1 === count( $hints ) ) {
 					$doc = $hints[0];
 				}
 				$typed[] = array( 'doc' => $doc, 'loc' => $loc, 'soft' => true );
-				if ( null === $lead_doc && null !== $carry && null !== $carry2 && $carry2 !== $carry ) {
+				if ( null === $lead_doc && null !== $carry && null !== $carry2 && $carry2 !== $doc && $loc[0] <= $this->docs[ $carry2 ]['max'] ) {
 					$typed[] = array( 'doc' => $carry2, 'loc' => $loc, 'soft' => true ); // The other guess: the words decide.
 				}
 			}
