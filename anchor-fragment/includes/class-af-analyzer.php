@@ -231,7 +231,12 @@ class AF_Analyzer {
 				if ( preg_match( '/^[\s(\[\x{2014}\x{2013}-]*\p{Lu}[^.;:()\[\]]{0,60}?\d+[a-z]?(?:\s*[-\x{2013},]\s*\d+)*\s+\p{Ll}/u', $aft ) ) {
 					$aft = '';
 				}
-				$nearby    = trim( ( $lead_sent ? end( $lead_sent ) : '' ) . ' | ' . $aft );
+				$last_sent = $lead_sent ? end( $lead_sent ) : '';
+				// "Catechism 1735 concerns freedom. It says, “…”": a bare pronoun intro carries the sentence before it.
+				if ( count( $lead_sent ) > 1 && preg_match( '/^(?:it|this|that|they|he|she)\s+(?:\p{L}+\s+){0,3}?(?:says?|reads?|states?|continues?|adds?|explains?|teaches|declares?)\b[^.!?]{0,30}$/iu', trim( $last_sent ) ) ) {
+					$last_sent = $lead_sent[ count( $lead_sent ) - 2 ] . ' ' . $last_sent;
+				}
+				$nearby    = trim( $last_sent . ' | ' . $aft );
 				foreach ( $this->cites( $nearby ) as $c ) {
 					$attached[ $c['doc'] . '|' . implode( ',', (array) $c['loc'] ) ] = true;
 				}
@@ -624,8 +629,9 @@ class AF_Analyzer {
 		if ( '' === $a ) {
 			return false;
 		}
-		if ( preg_match( '/^[^\x{201C}]{0,140}?\x{201D}/u', $a ) ) {
-			return true;
+		if ( preg_match( '/^[^\x{201C}]{0,140}?\x{201D}(\s*[(\[])?/u', $a, $cm ) ) {
+			// "...Never again war!” (Fratelli Tutti 258)": the closing mark that ends the quotation, with its cite right after it.
+			return empty( $cm[1] );
 		}
 		if ( preg_match( '/^\s*[\x{2014}\x{2013}-]/u', $a ) || ! preg_match( '/^[\s(\[*,;:]*(\p{L}[\p{L}\x{2019}\']*)/u', $a, $m ) ) {
 			return false;

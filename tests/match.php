@@ -447,5 +447,12 @@ check( '9as2 the introducing sentence names it: attached', ! empty( $q[0]['typed
 $q = run1( $an, $get, '<p>The text says, “' . $bread2 . '” (Test Document 4).</p>' );
 check( '9as3 a cite right after the quotation: attached', ! empty( $q[0]['typed'] ) && true === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
 
+// 17u-17v. 0.14.4: two cites 0.14.3 wrongly turned into mentions.
+$q = run1( $an, $get, '<p>He says:</p><p>x</p>' ); // placeholder keeps run1 warm
+$q = run1( $an, $get, '<p>He wrote, “' . $bread . '” Never again war!” (Test Document 4) The cry goes on.</p>' );
+check( '17u a cite right after the closing mark that ends the quotation is attached', ! empty( $q[0]['typed'] ) && true === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
+$q = run1( $an, $get, '<p>Test Document 4 concerns freedom and culpability. It says, “' . $bread . '” In other words, more.</p>' );
+check( '17v a cite in the sentence before "It says," is attached', ! empty( $q[0]['typed'] ) && true === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

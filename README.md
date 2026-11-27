@@ -47,6 +47,13 @@ A cite that starts the sentence right after a quotation and is its subject ("...
 - **Earlier wordings of revised paragraphs.** The Catechism's no. 2267 (the death penalty) was rewritten in 2018, and the vatican.va text is the new one, so posts quoting the 1997 wording showed up as "not found". The plugin now ships `data/catechism-editions.json`: hashed five-word runs (never text) of the old no. 2267, merged into the Catechism's index when matching. A quotation of the old wording matches paragraph 2267 as usual. The file can take other paragraphs and other revised documents.
 - **Context on the review cards.** Each card on Tools > Citations to fix now shows a few words either side of the quotation, so you can see what the cite was read from. It appears once the post is matched again.
 
+## 0.14.4
+
+Two cites that 0.14.3 wrongly turned into mentions:
+
+- `... Never again war!” (Fratelli Tutti 258)`: a bracketed cite right after the closing mark that ends the quotation is the quotation's cite, not a cite inside it.
+- `Catechism 1735 concerns freedom. It says, “...”`: when the sentence introducing the quotation is only a pronoun and a verb ("It says,"), the sentence before it counts as the introduction.
+
 ## 0.14.3
 
 Reading what follows a quotation more carefully. A cite is no longer taken from text after the quotation when that text is the author's own sentence rather than a cite:
