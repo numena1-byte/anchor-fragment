@@ -169,5 +169,31 @@ $resH = array( 'quotes' => array( array( 'i' => 1, 'status' => 'high', 'words' =
 $rh = AF_Graph::rows_from_result( $resH );
 check( 'a high quotation records only the paragraph that agrees', 1 === count( $rh ) && null !== $by( $rh, 'dilexi-te', 16 ), json_encode( array_keys( $rh ) ) );
 
+// Snapshots: what a change moved.
+function get_the_title( $id ) { return 'Post ' . $id; }
+function get_edit_post_link( $id, $c = '' ) { return 'https://staging.example/wp-admin/post.php?post=' . $id; }
+$wpdb->pdo->exec( 'DELETE FROM wp_af_citations' );
+AF_Graph::record_post( 1, array( 'quotes' => array( q( 0, 'high', $b( 'catechism', array( 10 ) ), array( array( 'doc' => 'catechism', 'loc' => array( 10 ) ) ) ), q( 1, 'medium', $b( 'laudato-si', array( 5 ), 0.85 ) ) ) ) );
+AF_Graph::record_post( 2, array( 'quotes' => array( q( 0, 'conflict', $b( 'laudato-si', array( 16 ), 0.9 ), array( array( 'doc' => 'laudato-si', 'loc' => array( 20 ) ) ) ) ) ) );
+$sv = AF_Graph::snapshot_save( 'Before 0.15!' );
+check( 'a snapshot is saved under a clean name', 'before-0.15' === $sv['label'] && $sv['edges'] >= 3, json_encode( $sv ) );
+$d0 = AF_Graph::snapshot_diff( 'before-0.15', 'current' );
+check( 'nothing differs from itself', 0 === $d0['total'], json_encode( $d0['transitions'] ) );
+// Post 1's high quotation becomes medium, post 2's conflict goes, post 3 gains a quotation.
+AF_Graph::record_post( 1, array( 'quotes' => array( q( 0, 'medium', $b( 'catechism', array( 10 ), 0.85 ) ), q( 1, 'medium', $b( 'laudato-si', array( 5 ), 0.85 ) ) ) ) );
+AF_Graph::record_post( 2, array( 'quotes' => array() ) );
+AF_Graph::record_post( 3, array( 'quotes' => array( q( 0, 'high', $b( 'fratelli-tutti', array( 7 ) ) ) ) ) );
+$d1 = AF_Graph::snapshot_diff( 'before-0.15', 'current' );
+check( 'the changes are found', 3 <= $d1['total'] && isset( $d1['transitions']['high > medium'] ) || isset( $d1['transitions']['high > medium'] ), json_encode( $d1['transitions'] ) );
+check( 'a removed edge is reported as gone', isset( $d1['transitions']['conflict > gone'] ), json_encode( $d1['transitions'] ) );
+check( 'a new edge is reported as new', isset( $d1['transitions']['new > high'] ), json_encode( $d1['transitions'] ) );
+check( 'an unchanged edge is not reported', 0 === count( array_filter( $d1['changes'], function ( $c ) { return 'laudato-si' === $c['doc'] && '5' === $c['locator']; } ) ) );
+check( 'each change names its post', 'Post 1' === ( array_values( array_filter( $d1['changes'], function ( $c ) { return 'high' === $c['from']; } ) )[0]['title'] ?? '' ) );
+$d2 = AF_Graph::snapshot_diff( 'before-0.15', 'current', 0, 50, 'new > high' );
+check( 'one kind of change can be asked for', 1 === $d2['total'] && 'new' === $d2['changes'][0]['from'], json_encode( $d2['total'] ) );
+check( 'an unknown snapshot is an error', is_wp_error( AF_Graph::snapshot_diff( 'nope', 'current' ) ) );
+for ( $i = 0; $i < 8; $i++ ) { AF_Graph::snapshot_save( 's' . $i ); }
+check( 'only the newest snapshots are kept', count( AF_Graph::snapshot_list() ) <= AF_Graph::SNAP_MAX && is_wp_error( AF_Graph::snapshot_diff( 'before-0.15', 'current' ) ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nall passed\n";
 exit( $fail ? 1 : 0 );

@@ -233,6 +233,162 @@ class AF_Graph {
 		return AF_VERSION === $ver && (int) $ts >= (int) strtotime( $modified_gmt . ' UTC' );
 	}
 
+	/* ------------------------------------------------------------------ snapshots (what a change to the rules moved) */
+
+	const SNAP_MAX = 6;
+
+	/** Every edge of every published post as key => "status|cover|ord|basis". A quotation is told apart by its fingerprint, so a quotation that moves in the post is still the same one. */
+	private static function edge_map() {
+		global $wpdb;
+		$t    = self::table();
+		$rows = $wpdb->get_results( "SELECT c.post_id, c.quote_ord, c.quote_hash, c.doc, c.locator, c.basis, c.status, c.cover FROM {$t} c JOIN {$wpdb->posts} p ON p.ID = c.post_id WHERE p.post_status = 'publish'", ARRAY_A );
+		$out  = array();
+		foreach ( (array) $rows as $r ) {
+			$q = '' !== (string) $r['quote_hash'] ? (string) $r['quote_hash'] : 'q' . (int) $r['quote_ord'];
+			$out[ (int) $r['post_id'] . '|' . $q . '|' . $r['doc'] . '|' . $r['locator'] ] = $r['status'] . '|' . ( null === $r['cover'] ? '' : round( (float) $r['cover'], 2 ) ) . '|' . (int) $r['quote_ord'] . '|' . $r['basis'];
+		}
+		return $out;
+	}
+
+	private static function snap_label( $label ) {
+		$l = strtolower( preg_replace( '/[^A-Za-z0-9._-]+/', '-', trim( (string) $label ) ) );
+		return substr( trim( $l, '-' ), 0, 40 );
+	}
+
+	/** Save the graph as it is now under a label ("before-0.15"). Saving a label again replaces it; only the newest few are kept. */
+	public static function snapshot_save( $label ) {
+		$label = self::snap_label( $label );
+		if ( '' === $label ) {
+			return new WP_Error( 'af_snap_label', 'Give the snapshot a name.', array( 'status' => 400 ) );
+		}
+		$edges = self::edge_map();
+		$list  = get_option( 'af_snap_list', array() );
+		$list  = is_array( $list ) ? $list : array();
+		unset( $list[ $label ] );
+		$list[ $label ] = array( 'at' => time(), 'version' => AF_VERSION, 'edges' => count( $edges ) );
+		update_option( 'af_snap_' . $label, array( 'meta' => $list[ $label ], 'edges' => $edges ), false );
+		while ( count( $list ) > self::SNAP_MAX ) {
+			$old = key( $list );
+			delete_option( 'af_snap_' . $old );
+			unset( $list[ $old ] );
+		}
+		update_option( 'af_snap_list', $list, false );
+		return array( 'label' => $label ) + $list[ $label ] + array( 'by_status' => self::count_status( $edges ) );
+	}
+
+	public static function snapshot_list() {
+		$list = get_option( 'af_snap_list', array() );
+		$out  = array();
+		foreach ( is_array( $list ) ? $list : array() as $k => $m ) {
+			$out[] = array( 'label' => $k ) + $m;
+		}
+		return array_reverse( $out );
+	}
+
+	private static function count_status( array $edges ) {
+		$c = array();
+		foreach ( $edges as $v ) {
+			$st       = explode( '|', $v, 2 )[0];
+			$c[ $st ] = ( $c[ $st ] ?? 0 ) + 1;
+		}
+		arsort( $c );
+		return $c;
+	}
+
+	private static function snap_edges( $label ) {
+		if ( 'current' === $label ) {
+			$e = self::edge_map();
+			return array( 'meta' => array( 'at' => time(), 'version' => AF_VERSION, 'edges' => count( $e ) ), 'edges' => $e );
+		}
+		$s = get_option( 'af_snap_' . self::snap_label( $label ) );
+		return is_array( $s ) && isset( $s['edges'] ) ? $s : null;
+	}
+
+	/**
+	 * What differs between two snapshots ("current" is the graph as it is now): edges that changed status, appeared or went,
+	 * with the words around each quotation so that each can be read. Changes are grouped by what they moved from and to.
+	 *
+	 * @return array|WP_Error
+	 */
+	public static function snapshot_diff( $a, $b = 'current', $offset = 0, $limit = 200, $transition = '' ) {
+		$A = self::snap_edges( $a );
+		$B = self::snap_edges( $b );
+		if ( ! $A || ! $B ) {
+			return new WP_Error( 'af_snap_missing', 'No snapshot with that name.', array( 'status' => 404 ) );
+		}
+		$ch = array();
+		foreach ( $A['edges'] as $k => $v ) {
+			$x = explode( '|', $v );
+			if ( ! isset( $B['edges'][ $k ] ) ) {
+				$ch[] = array( $k, $x[0], 'gone', (int) $x[2], $x[3] ?? '', '' );
+				continue;
+			}
+			$y = explode( '|', $B['edges'][ $k ] );
+			if ( $x[0] !== $y[0] ) {
+				$ch[] = array( $k, $x[0], $y[0], (int) $y[2], $x[3] ?? '', $y[3] ?? '' );
+			}
+		}
+		foreach ( $B['edges'] as $k => $v ) {
+			if ( ! isset( $A['edges'][ $k ] ) ) {
+				$n    = explode( '|', $v );
+				$ch[] = array( $k, 'new', $n[0], (int) $n[2], '', $n[3] ?? '' );
+			}
+		}
+		$trans = array();
+		foreach ( $ch as $c ) {
+			$tk           = $c[1] . ' > ' . $c[2];
+			$trans[ $tk ] = ( $trans[ $tk ] ?? 0 ) + 1;
+		}
+		arsort( $trans );
+		if ( '' !== $transition ) {
+			$ch = array_values( array_filter( $ch, function ( $c ) use ( $transition ) {
+				return $c[1] . ' > ' . $c[2] === $transition;
+			} ) );
+		}
+		usort( $ch, function ( $p, $q ) {
+			return strcmp( $p[1] . $p[2] . $p[0], $q[1] . $q[2] . $q[0] );
+		} );
+		$total = count( $ch );
+		$rows  = array();
+		foreach ( array_slice( $ch, (int) $offset, (int) $limit ) as $c ) {
+			list( $pid, $q, $doc, $loc ) = explode( '|', $c[0] );
+			$pid    = (int) $pid;
+			$m      = get_option( 'af_match_' . $pid );
+			$around = array();
+			$exc    = '';
+			if ( is_array( $m ) && ! empty( $m['quotes'] ) ) {
+				foreach ( $m['quotes'] as $mq ) {
+					if ( (int) $mq['i'] === (int) $c[3] ) {
+						$exc    = (string) ( $mq['excerpt'] ?? '' );
+						$around = isset( $mq['around'] ) && is_array( $mq['around'] ) ? $mq['around'] : array();
+						break;
+					}
+				}
+			}
+			$rows[] = array(
+				'post_id' => $pid,
+				'title'   => html_entity_decode( get_the_title( $pid ), ENT_QUOTES, 'UTF-8' ),
+				'edit'    => get_edit_post_link( $pid, 'raw' ),
+				'ord'     => (int) $c[3],
+				'doc'     => $doc,
+				'locator' => $loc,
+				'basis'   => ( $c[4] === $c[5] || '' === $c[4] || '' === $c[5] ) ? ( '' !== $c[5] ? $c[5] : $c[4] ) : $c[4] . ' -> ' . $c[5],
+				'from'    => $c[1],
+				'to'      => $c[2],
+				'excerpt' => $exc,
+				'before'  => (string) ( $around['before'] ?? '' ),
+				'after'   => (string) ( $around['after'] ?? '' ),
+			);
+		}
+		return array(
+			'a'           => array( 'label' => $a ) + $A['meta'] + array( 'by_status' => self::count_status( $A['edges'] ) ),
+			'b'           => array( 'label' => $b ) + $B['meta'] + array( 'by_status' => self::count_status( $B['edges'] ) ),
+			'transitions' => $trans,
+			'total'       => $total,
+			'changes'     => $rows,
+		);
+	}
+
 	/* ------------------------------------------------------------------ matching posts (batch and on save) */
 
 	/**

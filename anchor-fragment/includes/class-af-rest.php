@@ -197,6 +197,49 @@ class AF_Rest {
 		);
 		register_rest_route(
 			'anchorfrag/v1',
+			'/graph/snapshot',
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => function () {
+						return rest_ensure_response( AF_Graph::snapshot_list() );
+					},
+					'permission_callback' => function () {
+						return current_user_can( 'edit_posts' );
+					},
+				),
+				array(
+					'methods'             => 'POST',
+					'callback'            => function ( WP_REST_Request $req ) {
+						AF_Graph::maybe_install();
+						$r = AF_Graph::snapshot_save( (string) $req['label'] );
+						return is_wp_error( $r ) ? $r : rest_ensure_response( $r );
+					},
+					'permission_callback' => function () {
+						return current_user_can( 'manage_options' );
+					},
+				),
+			)
+		);
+		register_rest_route(
+			'anchorfrag/v1',
+			'/graph/diff',
+			array(
+				'methods'             => 'GET',
+				'callback'            => function ( WP_REST_Request $req ) {
+					if ( function_exists( 'set_time_limit' ) ) {
+						@set_time_limit( 60 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+					}
+					$r = AF_Graph::snapshot_diff( (string) $req['a'], (string) ( $req['b'] ?: 'current' ), (int) $req['offset'], min( 500, (int) ( $req['limit'] ?: 200 ) ), (string) $req['transition'] );
+					return is_wp_error( $r ) ? $r : rest_ensure_response( $r );
+				},
+				'permission_callback' => function () {
+					return current_user_can( 'edit_posts' );
+				},
+			)
+		);
+		register_rest_route(
+			'anchorfrag/v1',
 			'/graph/review',
 			array(
 				'methods'             => 'GET',
@@ -527,6 +570,8 @@ class AF_Rest {
 			'graph'   => rest_url( 'anchorfrag/v1/graph' ),
 			'rebuild' => rest_url( 'anchorfrag/v1/graph/rebuild' ),
 			'review'  => rest_url( 'anchorfrag/v1/graph/review' ),
+			'snap'    => rest_url( 'anchorfrag/v1/graph/snapshot' ),
+			'diff'    => rest_url( 'anchorfrag/v1/graph/diff' ),
 			'confirm' => rest_url( 'anchorfrag/v1/graph/confirm' ),
 			'xstep'   => rest_url( 'anchorfrag/v1/xref/step' ),
 			'xexplain' => rest_url( 'anchorfrag/v1/xref/explain' ),
@@ -655,6 +700,14 @@ class AF_Rest {
 			<p><button class="button button-primary" id="af-rebuild">Match all posts</button>
 			<label><input type="checkbox" id="af-rebuild-force"> redo posts already matched</label>
 			<span id="af-rebuild-msg" style="margin-left:1em"></span></p>
+			<h3>Compare before and after a change</h3>
+			<p>Save the graph under a name before installing a new version or changing a rule, match all posts again, then compare. Every edge that moved shows with the words around its quotation, so each change can be read.</p>
+			<p><input type="text" id="af-snap-label" placeholder="name, e.g. before-0.15" size="22"> <button class="button" id="af-snap-save">Save snapshot</button>
+			<span id="af-snap-msg" style="margin-left:1em"></span></p>
+			<p>Compare <select id="af-snap-a"></select> with <select id="af-snap-b"><option value="current">the graph now</option></select>
+			<button class="button button-primary" id="af-snap-go">Compare</button></p>
+			<div id="af-snap-out" style="max-width:75em"></div>
+
 			<form id="af-graph-form">
 				Document <select name="doc"><option value="">all</option>
 				<?php foreach ( AF_Service::registry() as $id => $d ) : ?>
@@ -882,6 +935,68 @@ class AF_Rest {
 				}
 				step(0);
 			});
+			/* ---- snapshots ---- */
+			var snapA = document.getElementById('af-snap-a');
+			var snapB = document.getElementById('af-snap-b');
+			var snapOut = document.getElementById('af-snap-out');
+			var snapMsg = document.getElementById('af-snap-msg');
+			function loadSnaps() {
+				fetch(cfg.snap, { headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (list) {
+					snapA.innerHTML = '';
+					while (snapB.options.length > 1) { snapB.remove(1); }
+					(list || []).forEach(function (s) {
+						var label = s.label + ' (' + s.version + ', ' + s.edges + ' edges, ' + new Date(s.at * 1000).toLocaleString() + ')';
+						var o = document.createElement('option'); o.value = s.label; o.textContent = label; snapA.appendChild(o);
+						var o2 = document.createElement('option'); o2.value = s.label; o2.textContent = label; snapB.appendChild(o2);
+					});
+				});
+			}
+			loadSnaps();
+			document.getElementById('af-snap-save').addEventListener('click', function () {
+				var label = document.getElementById('af-snap-label').value;
+				snapMsg.textContent = 'Saving...';
+				fetch(cfg.snap + '?label=' + encodeURIComponent(label), { method: 'POST', headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' })
+					.then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+					.then(function (res) { snapMsg.textContent = res.ok ? 'Saved "' + res.body.label + '" (' + res.body.edges + ' edges).' : (res.body.message || 'Failed.'); if (res.ok) { loadSnaps(); } });
+			});
+			function showDiff(transition) {
+				snapOut.textContent = 'Comparing...';
+				var q = new URLSearchParams({ a: snapA.value, b: snapB.value, limit: 300 });
+				if (transition) { q.set('transition', transition); }
+				fetch(cfg.diff + '?' + q.toString(), { headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' })
+					.then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+					.then(function (res) {
+						snapOut.textContent = '';
+						if (!res.ok) { snapOut.textContent = res.body.message || 'Failed.'; return; }
+						var d = res.body;
+						snapOut.appendChild(el('p', d.a.label + ' (' + d.a.version + ') against ' + d.b.label + ' (' + d.b.version + '): ' + d.total + ' edges differ' + (transition ? ' (' + transition + ')' : '') + '.'));
+						var keys = Object.keys(d.transitions);
+						if (!transition) {
+							var rows = keys.map(function (k) { return [k, String(d.transitions[k])]; });
+							var t = table(['Moved', 'Edges'], rows);
+							Array.prototype.slice.call(t.querySelectorAll('tr')).forEach(function (tr, i) {
+								if (i === 0) { return; }
+								tr.style.cursor = 'pointer';
+								tr.title = 'Show these';
+								tr.addEventListener('click', function () { showDiff(keys[i - 1]); });
+							});
+							snapOut.appendChild(t);
+						} else {
+							var back = el('button', 'All changes'); back.className = 'button'; back.addEventListener('click', function () { showDiff(''); }); snapOut.appendChild(back);
+						}
+						d.changes.forEach(function (c) {
+							var box = el('div', null, 'border-top:1px solid #ddd;padding:.5em 0');
+							var h = el('div', null, 'font-weight:600');
+							var a = el('a', c.title); a.href = c.edit || '#'; a.target = '_blank'; a.rel = 'noopener';
+							h.appendChild(a); h.appendChild(document.createTextNode(' \u2013 quotation ' + c.ord + ', ' + c.doc + ' ' + c.locator + ' (' + c.basis + '): ' + c.from + ' \u2192 ' + c.to));
+							box.appendChild(h);
+							box.appendChild(el('div', '\u2026' + c.before + ' \u201c' + c.excerpt + '\u2026\u201d ' + c.after + '\u2026', 'color:#555;margin-top:2px'));
+							snapOut.appendChild(box);
+						});
+					})
+					.catch(function (err) { snapOut.textContent = 'Request failed: ' + err; });
+			}
+			document.getElementById('af-snap-go').addEventListener('click', function () { showDiff(''); });
 			var gform = document.getElementById('af-graph-form');
 			var gout = document.getElementById('af-graph-out');
 			function table(head, rows) {
