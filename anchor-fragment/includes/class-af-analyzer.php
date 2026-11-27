@@ -378,7 +378,10 @@ class AF_Analyzer {
 			// "...Dignitatis Humanae, which states, “…” The Declaration goes on (#12):": the work named just before the quotation is
 			// the one a bare number after it most likely belongs to, though it counts only where the words agree.
 			if ( ! $firm && null !== $lead_doc ) {
-				$carry = $lead_doc;
+				$near_lead = $this->docs_in( mb_substr( $q['lead'], -90 ) );
+				if ( 1 === count( $near_lead ) ) {
+					$carry = $near_lead[0]; // Named just before it, not somewhere further back, where an earlier cite's document is the better guess.
+				}
 			}
 			$near = 1 === count( $hints ) ? $hints[0] : ( 1 === count( $hint_text ) ? $hint_text[0] : null );
 
