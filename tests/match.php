@@ -454,5 +454,11 @@ check( '17u a cite right after the closing mark that ends the quotation is attac
 $q = run1( $an, $get, '<p>Test Document 4 concerns freedom and culpability. It says, “' . $bread . '” In other words, more.</p>' );
 check( '17v a cite in the sentence before "It says," is attached', ! empty( $q[0]['typed'] ) && true === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
 
+// 17w-17x. 0.14.4: more cites 0.14.3 turned into mentions.
+$q = run1( $an, $get, '<p>He wrote, “' . $bread . '” This teaching is found in the now twice-revised paragraph 4 of Test Document.</p>' );
+check( '17w "This teaching is found in paragraph 4 of TD" names the source', ! empty( $q[0]['typed'] ) && false !== ( $q[0]['typed'][0]['attached'] ?? true ), json_encode( $q[0]['typed'] ?? null ) );
+$q = run1( $an, $get, '<p>He wrote, “' . $bread . '” This is nonsense, he said in Test Document 4, and left.</p>' );
+check( '17x an ordinary "This is ..." sentence is still the author\'s', empty( $q[0]['typed'] ) || false === $q[0]['typed'][0]['attached'], json_encode( $q[0]['typed'] ?? null ) );
+
 echo $fail ? "\n$fail FAILED\n" : "\nAll passed\n";
 exit( $fail ? 1 : 0 );

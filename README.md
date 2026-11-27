@@ -47,6 +47,14 @@ A cite that starts the sentence right after a quotation and is its subject ("...
 - **Earlier wordings of revised paragraphs.** The Catechism's no. 2267 (the death penalty) was rewritten in 2018, and the vatican.va text is the new one, so posts quoting the 1997 wording showed up as "not found". The plugin now ships `data/catechism-editions.json`: hashed five-word runs (never text) of the old no. 2267, merged into the Catechism's index when matching. A quotation of the old wording matches paragraph 2267 as usual. The file can take other paragraphs and other revised documents.
 - **Context on the review cards.** Each card on Tools > Citations to fix now shows a few words either side of the quotation, so you can see what the cite was read from. It appears once the post is matched again.
 
+## 0.14.5
+
+Found by comparing the whole graph under 0.14.2 and 0.14.3 (every difference: 5 cards):
+
+- `This teaching is found in the now twice-revised paragraph 2267 of the Catechism`: a sentence that says where the quotation is found names its source.
+- A bare `(#12)` after a quotation takes its document from the work named just before the earlier quotation when that quotation had no cite of its own (Dignitatis humanae, in post 3815), where it used to fall back to the Catechism.
+- The other differences were correct: six "not found" cards became mentions, and two false conflicts (a cite given to the wrong quotation, and a Compendium number) went away.
+
 ## 0.14.4
 
 Two cites that 0.14.3 wrongly turned into mentions:

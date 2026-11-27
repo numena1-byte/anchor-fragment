@@ -368,10 +368,17 @@ class AF_Analyzer {
 					$typed[] = $guess ? array( 'doc' => $doc, 'loc' => $mc['loc'], 'soft' => true ) : array( 'doc' => $doc, 'loc' => $mc['loc'] );
 				}
 			}
+			$firm = false;
 			foreach ( $typed as $t ) {
 				if ( null !== $t['doc'] && empty( $t['soft'] ) ) {
 					$carry = $t['doc'];
+					$firm  = true;
 				}
+			}
+			// "...Dignitatis Humanae, which states, “…” The Declaration goes on (#12):": the work named just before the quotation is
+			// the one a bare number after it most likely belongs to, though it counts only where the words agree.
+			if ( ! $firm && null !== $lead_doc ) {
+				$carry = $lead_doc;
 			}
 			$near = 1 === count( $hints ) ? $hints[0] : ( 1 === count( $hint_text ) ? $hint_text[0] : null );
 
@@ -639,6 +646,10 @@ class AF_Analyzer {
 		$w = $m[1];
 		// "This is followed by the reference to article 4 of ...": the author naming the reference that goes with the quotation.
 		if ( preg_match( '/^(?:this|that|it)\s+is\s+(?:then\s+)?followed\s+by\s+(?:the\s+)?(?:reference|citation|cite)\b/iu', $a ) ) {
+			return false;
+		}
+		// "This teaching is found in the now twice-revised paragraph 2267 of the Catechism": the author saying where the quotation comes from.
+		if ( preg_match( '/^(?:this|that|these|those|it|the)(?:\s+[\p{L}\x{2019}\'-]+){0,4}?\s+(?:is|are|can be|may be|comes?|appears?)\s+(?:found|stated|taught|contained|expressed|set\s+out|taken|drawn|quoted|from|in)\b/iu', $a ) ) {
 			return false;
 		}
 		if ( ! preg_match( '/^\p{Lu}/u', $w ) || preg_match( '/^\p{Lu}{2,6}$/u', $w ) ) {
