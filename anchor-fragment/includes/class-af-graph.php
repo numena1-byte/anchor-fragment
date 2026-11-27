@@ -245,7 +245,7 @@ class AF_Graph {
 		$out  = array();
 		foreach ( (array) $rows as $r ) {
 			$q = '' !== (string) $r['quote_hash'] ? (string) $r['quote_hash'] : 'q' . (int) $r['quote_ord'];
-			$out[ (int) $r['post_id'] . '|' . $q . '|' . $r['doc'] . '|' . $r['locator'] ] = $r['status'] . '|' . ( null === $r['cover'] ? '' : round( (float) $r['cover'], 2 ) ) . '|' . (int) $r['quote_ord'] . '|' . $r['basis'];
+			$out[ (int) $r['post_id'] . '|' . $q . '|' . $r['doc'] . '|' . $r['locator'] . '|' . $r['basis'] ] = $r['status'] . '|' . ( null === $r['cover'] ? '' : round( (float) $r['cover'], 2 ) ) . '|' . (int) $r['quote_ord'] . '|' . $r['basis'];
 		}
 		return $out;
 	}
@@ -334,6 +334,25 @@ class AF_Graph {
 				$ch[] = array( $k, 'new', $n[0], (int) $n[2], '', $n[3] ?? '' );
 			}
 		}
+		// An edge whose basis changed (typed cite to text match) shows as one that went and one that came: join them.
+		$gone = array();
+		foreach ( $ch as $i => $c ) {
+			if ( 'gone' === $c[2] ) {
+				$gone[ implode( '|', array_slice( explode( '|', $c[0] ), 0, 4 ) ) ][] = $i;
+			}
+		}
+		foreach ( $ch as $i => $c ) {
+			if ( 'new' !== $c[1] ) {
+				continue;
+			}
+			$pre = implode( '|', array_slice( explode( '|', $c[0] ), 0, 4 ) );
+			if ( ! empty( $gone[ $pre ] ) ) {
+				$j        = array_shift( $gone[ $pre ] );
+				$ch[ $j ] = array( $ch[ $j ][0], $ch[ $j ][1], $c[2], $c[3], $ch[ $j ][4], $c[5] );
+				unset( $ch[ $i ] );
+			}
+		}
+		$ch    = array_values( $ch );
 		$trans = array();
 		foreach ( $ch as $c ) {
 			$tk           = $c[1] . ' > ' . $c[2];
