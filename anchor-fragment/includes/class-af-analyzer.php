@@ -118,6 +118,7 @@ class AF_Analyzer {
 
 		$results = array();
 		$carry   = null; // The document most recently cited by number, for bare "(74)" style cites.
+		$carry2  = null; // A second guess for them: the work named in the text before the last quotation that had no cite of its own.
 		$near    = null; // The one document named around the previous quotation, for "#892" style cites.
 		$n       = 0;
 		foreach ( $this->extract( $html ) as $q ) {
@@ -310,10 +311,16 @@ class AF_Analyzer {
 			$foreign_cite = ! $has_own && $this->foreign_cite_after( $after_cite );
 			foreach ( $foreign_cite ? array() : $this->bare_cites( $has_own ? $q['cite'] : $q['cite'] . ' ' . $after_cite ) as $loc ) {
 				$doc = null !== $lead_doc ? $lead_doc : $carry;
+				if ( null === $doc ) {
+					$doc = $carry2;
+				}
 				if ( null === $doc && 1 === count( $hints ) ) {
 					$doc = $hints[0];
 				}
 				$typed[] = array( 'doc' => $doc, 'loc' => $loc, 'soft' => true );
+				if ( null === $lead_doc && null !== $carry && null !== $carry2 && $carry2 !== $carry ) {
+					$typed[] = array( 'doc' => $carry2, 'loc' => $loc, 'soft' => true ); // The other guess: the words decide.
+				}
 			}
 			// "#892" or "no. 892" beside the quotation, with no document named there: the document comes from an
 			// earlier cite, or the one named here, or the one named around the previous quotation. "article 892"
@@ -355,6 +362,12 @@ class AF_Analyzer {
 					if ( null === $doc && null !== $carry ) {
 						$doc   = $carry;
 						$guess = true; // Only the document cited last: counts when the words agree.
+						if ( null !== $carry2 && $carry2 !== $carry && $mc['loc'][0] <= $this->docs[ $carry2 ]['max'] ) {
+							$typed[] = array( 'doc' => $carry2, 'loc' => $mc['loc'], 'soft' => true ); // The other guess: the words decide.
+						}
+					} elseif ( null === $doc && null !== $carry2 ) {
+						$doc   = $carry2;
+						$guess = true;
 					}
 				}
 				if ( null === $doc && 1 === count( $hints ) ) {
@@ -377,11 +390,9 @@ class AF_Analyzer {
 			}
 			// "...Dignitatis Humanae, which states, “…” The Declaration goes on (#12):": the work named just before the quotation is
 			// the one a bare number after it most likely belongs to, though it counts only where the words agree.
-			if ( ! $firm && null !== $lead_doc ) {
-				$near_lead = $this->docs_in( mb_substr( $q['lead'], -90 ) );
-				if ( 1 === count( $near_lead ) ) {
-					$carry = $near_lead[0]; // Named just before it, not somewhere further back, where an earlier cite's document is the better guess.
-				}
+			// It is kept apart from the document of the last firm cite, and both are tried, since the words decide which is right.
+			if ( ! $firm ) {
+				$carry2 = $lead_doc;
 			}
 			$near = 1 === count( $hints ) ? $hints[0] : ( 1 === count( $hint_text ) ? $hint_text[0] : null );
 
