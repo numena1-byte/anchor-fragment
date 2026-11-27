@@ -49,13 +49,7 @@ A cite that starts the sentence right after a quotation and is its subject ("...
 
 ## 0.15.0
 
-Compare the graph before and after a change. On the test page, under Citation graph, "Compare before and after a change":
-
-1. Save a snapshot of the graph under a name (before installing a new version or changing a rule).
-2. Match all posts again ("redo posts already matched").
-3. Compare the snapshot with the graph now. Every edge that moved is listed with its post, the words around its quotation and where it moved from and to ("high > medium", "new > high", "conflict > gone"). Click a line of the summary to see only those.
-
-Snapshots hold statuses only, no text. The six newest are kept. REST: `GET/POST /graph/snapshot`, `GET /graph/diff?a=&b=&transition=`.
+Snapshots of the citation graph, for checking what a change to the parser's rules moved. There is no screen for it: `POST /graph/snapshot?label=` saves every edge's status (no text; the six newest are kept), and `GET /graph/diff?a=<label>&b=current&transition=` lists the edges that moved with the words around each quotation. Both are for administrators and editors. See `docs/parser-log.md` for the record of what each rule change moved.
 
 ## 0.14.5
 
