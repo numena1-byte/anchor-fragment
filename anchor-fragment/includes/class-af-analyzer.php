@@ -391,7 +391,7 @@ class AF_Analyzer {
 			// "...Dignitatis Humanae, which states, “…” The Declaration goes on (#12):": the work named just before the quotation is
 			// the one a bare number after it most likely belongs to, though it counts only where the words agree.
 			// It is kept apart from the document of the last firm cite, and both are tried, since the words decide which is right.
-			if ( ! $firm ) {
+			if ( ! $firm && null !== $lead_doc ) {
 				$carry2 = $lead_doc;
 			}
 			$near = 1 === count( $hints ) ? $hints[0] : ( 1 === count( $hint_text ) ? $hint_text[0] : null );
